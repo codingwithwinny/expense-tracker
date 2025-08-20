@@ -6,11 +6,13 @@ import { fileURLToPath } from 'url'
 import { VitePWA } from 'vite-plugin-pwa'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+
 const REPO = 'expense-tracker'
-const isGH = process.env.GH_PAGES === 'true' // true for build/deploy, false for local dev
+const isGH = process.env.GH_PAGES === 'true'
+const basePath = isGH ? `/${REPO}/` : '/'
 
 export default defineConfig({
-  base: '/',
+  base: basePath, // <-- IMPORTANT
   plugins: [
     react(),
     VitePWA({
@@ -23,8 +25,8 @@ export default defineConfig({
         theme_color: '#0f172a',
         background_color: '#ffffff',
         display: 'standalone',
-        start_url: isGH ? `/${REPO}/` : '/',
-        scope: isGH ? `/${REPO}/` : '/',
+        start_url: basePath, // match base
+        scope: basePath,     // match base
         icons: [
           { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
           { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
