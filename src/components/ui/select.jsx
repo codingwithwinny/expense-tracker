@@ -1,5 +1,4 @@
 import React from "react";
-
 function flattenItems(children, acc=[]) {
   React.Children.forEach(children, (child) => {
     if (!child) return;
@@ -8,12 +7,11 @@ function flattenItems(children, acc=[]) {
   });
   return acc;
 }
-
 export function Select({ value, onValueChange, children }) {
   const items = flattenItems(children);
   return (
     <select
-      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+      className="field appearance-none pr-8 bg-[url('data:image/svg+xml;utf8,<svg fill=%22%23677%22 height=%2220%22 viewBox=%220 0 20 20%22 width=%2220%22 xmlns=%22http://www.w3.org/2000/svg%22><polygon points=%220,0 20,0 10,12%22/></svg>')] bg-[right_0.6rem_center] bg-no-repeat"
       value={value}
       onChange={(e) => onValueChange?.(e.target.value)}
     >
@@ -23,8 +21,8 @@ export function Select({ value, onValueChange, children }) {
     </select>
   );
 }
-export function SelectTrigger({ children, ..._ }) { return <>{children}</>; }
-export function SelectContent({ children, ..._ }) { return <>{children}</>; }
-export function SelectValue({ ..._ }) { return null; }
+export function SelectTrigger({ children }) { return <>{children}</>; }
+export function SelectContent({ children }) { return <>{children}</>; }
+export function SelectValue() { return null; }
 export function SelectItem({ value, children }) { return null; }
 SelectItem.displayName = "SelectItem";

@@ -1,14 +1,16 @@
+/* eslint-env node */
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { resolve } from 'path'
+import { resolve as pathResolve, dirname } from 'path'
+import { fileURLToPath } from 'url'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// Your repo name on GitHub Pages
+const __dirname = dirname(fileURLToPath(import.meta.url))
 const REPO = 'expense-tracker'
+const isGH = process.env.GH_PAGES === 'true' // true for build/deploy, false for local dev
 
 export default defineConfig({
-  // IMPORTANT for GitHub Pages
-  base: `/${REPO}/`,
+  base: '/',
   plugins: [
     react(),
     VitePWA({
@@ -21,20 +23,15 @@ export default defineConfig({
         theme_color: '#0f172a',
         background_color: '#ffffff',
         display: 'standalone',
-        // IMPORTANT: must match your Pages path
-        start_url: `/${REPO}/`,
-        scope: `/${REPO}/`,
+        start_url: isGH ? `/${REPO}/` : '/',
+        scope: isGH ? `/${REPO}/` : '/',
         icons: [
           { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
           { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
           { src: 'pwa-512x512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
-        ],
-        // optional: quiets Chrome’s “richer install UI” warning later
-        screenshots: [
-          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', form_factor: 'wide' }
         ]
       }
     })
   ],
-  resolve: { alias: { '@': resolve(__dirname, 'src') } },
+  resolve: { alias: { '@': pathResolve(__dirname, 'src') } },
 })

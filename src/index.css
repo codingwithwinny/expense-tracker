@@ -1,3 +1,41 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body {
+    @apply antialiased text-gray-800;
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
+  }
+}
+
+@layer components {
+  .glass { @apply rounded-2xl border border-gray-200/60 bg-white/70 shadow-lg backdrop-blur; }
+  .hover-pop { @apply transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-xl; }
+
+  .field {
+    @apply w-full rounded-xl border border-gray-300/80 bg-white px-3 py-2 text-sm outline-none
+           ring-0 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200;
+  }
+
+  /* base button utilities (duplicated into each variant; no @apply .btn) */
+  .btn {
+    @apply inline-flex items-center justify-center rounded-2xl text-sm font-medium transition
+           border shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-200;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-2xl text-sm font-medium transition
+           border shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-200
+           bg-gradient-to-br from-indigo-600 to-violet-600 text-white border-transparent
+           hover:opacity-95 active:opacity-90;
+  }
+  .btn-outline {
+    @apply inline-flex items-center justify-center rounded-2xl text-sm font-medium transition
+           border shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-200
+           bg-white text-gray-900 border-gray-200 hover:bg-gray-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-2xl text-sm font-medium transition
+           border shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-200
+           bg-transparent border-transparent hover:bg-gray-100 shadow-none;
+  }
+}
