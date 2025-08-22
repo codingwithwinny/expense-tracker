@@ -1,5 +1,18 @@
-import React, { useEffect, useMemo, useState } from "react";
+// src/App.jsx
+import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
+
+import useAuth from "@/hooks/useAuth";
+import useMonthData from "@/hooks/useMonthData";
+import { fmt, monthKey, buildCSV } from "@/lib/utils";
+import {
+  CATEGORIES as DEFAULT_CATEGORIES,
+  MAX_CATEGORIES,
+  MAX_CATEGORY_NAME_LEN,
+  COLORS,
+} from "@/lib/constants";
+
+import AuthButtons from "@/components/AuthButtons";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,87 +44,40 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
 /* -----------------------------
-   Helpers & constants
+   Small helper (stable colors)
 ------------------------------ */
-
-// INR currency format
-const fmt = (n) =>
-  isNaN(n)
-    ? "₹0"
-    : Number(n).toLocaleString("en-IN", {
-        style: "currency",
-        currency: "INR",
-        maximumFractionDigits: 0,
-      });
-
-const monthKey = (d) => {
-  const dt = d ? new Date(d) : new Date();
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
-};
-
-// Default (seed) categories — used only the first time a month is opened
-const DEFAULT_CATEGORIES = [
-  "Rent",
-  "Groceries",
-  "Transport",
-  "Utilities",
-  "Eating Out",
-  "Shopping",
-  "Fitness",
-  "Entertainment",
-  "Education",
-  "Medical",
-  "Other",
-];
-
-const MAX_CATEGORIES = 30; // sensible limit, including defaults
-const MAX_CATEGORY_NAME_LEN = 24;
-
-// Simple hash → pick color deterministically so charts are stable
 function colorFor(name) {
-  const COLORS = [
-    "#6366F1",
-    "#22C55E",
-    "#F59E0B",
-    "#EF4444",
-    "#06B6D4",
-    "#A855F7",
-    "#84CC16",
-    "#F97316",
-    "#14B8A6",
-    "#E11D48",
-    "#64748B",
-  ];
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return COLORS[h % COLORS.length];
 }
 
-// Build CSV from array-of-arrays with proper newlines
-function buildCSV(table) {
-  return table
-    .map((row) => row.map((cell) => String(cell)).join(","))
-    .join("\n");
-}
-
 /* -----------------------------
    App
 ------------------------------ */
-
 export default function ExpenseTracker() {
+  // Month selector
   const [selectedMonth, setSelectedMonth] = useState(monthKey());
 
-  // Persisted state per month
-  const [incomeSources, setIncomeSources] = useState([]); // [{id, name, amount}]
-  const [expenses, setExpenses] = useState([]); // [{id, date, category, description, amount}]
-  const [catBudgets, setCatBudgets] = useState({}); // {category: number}
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  // Auth state
+  const { user /*, pending*/ } = useAuth();
+
+  // Month data (auto-loads & debounced-saves when user/month changes)
+  const { state, setState, totals } = useMonthData(user, selectedMonth);
+
+  // Always have safe defaults in case Firestore/local has partial data
+  const {
+    incomeSources = [],
+    expenses = [],
+    catBudgets = {},
+    categories = DEFAULT_CATEGORIES,
+  } = state;
 
   // UI form state
   const [source, setSource] = useState({ name: "Salary", amount: "" });
   const [exp, setExp] = useState({
     date: new Date().toISOString().slice(0, 10),
-    category: "Groceries",
+    category: categories[0] || "Groceries",
     description: "",
     amount: "",
   });
@@ -120,95 +86,38 @@ export default function ExpenseTracker() {
   const [newCat, setNewCat] = useState("");
   const [catError, setCatError] = useState("");
 
-  // Load month data
-  useEffect(() => {
-    const raw = localStorage.getItem(`expense-tracker:${selectedMonth}`);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      setIncomeSources(parsed.incomeSources || []);
-      setExpenses(parsed.expenses || []);
-      setCatBudgets(parsed.catBudgets || {});
-      setCategories(
-        parsed.categories && parsed.categories.length
-          ? parsed.categories
-          : DEFAULT_CATEGORIES
-      );
-    } else {
-      setIncomeSources([]);
-      setExpenses([]);
-      setCatBudgets({});
-      setCategories(DEFAULT_CATEGORIES);
-    }
-  }, [selectedMonth]);
-
-  // Save month data
-  useEffect(() => {
-    const payload = JSON.stringify({
-      incomeSources,
-      expenses,
-      catBudgets,
-      categories,
-    });
-    localStorage.setItem(`expense-tracker:${selectedMonth}`, payload);
-  }, [incomeSources, expenses, catBudgets, categories, selectedMonth]);
-
-  // Dev-only self tests
-  useEffect(() => {
-    if (typeof window !== "undefined" && import.meta?.env?.DEV) {
-      runSelfTests();
-    }
-  }, []);
-
-  // Totals, per-category breakdown
-  const totals = useMemo(() => {
-    const income = incomeSources.reduce(
-      (s, i) => s + (Number(i.amount) || 0),
-      0
-    );
-    const totalExp = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-    const remaining = income - totalExp;
-    const util =
-      income > 0 ? Math.min(100, Math.round((totalExp / income) * 100)) : 0;
-
-    const byCatMap = expenses.reduce((acc, e) => {
-      const k = e.category || "Other";
-      acc[k] = (acc[k] || 0) + (Number(e.amount) || 0);
-      return acc;
-    }, {});
-    const byCat = Object.entries(byCatMap)
-      .map(([name, value]) => ({
-        name,
-        value,
-        budget: Number(catBudgets[name]) || 0,
-      }))
-      .sort((a, b) => b.value - a.value);
-
-    return { income, totalExp, remaining, util, byCat };
-  }, [incomeSources, expenses, catBudgets]);
-
-  /* --------------- Actions --------------- */
+  /* --------------- Actions (use setState) --------------- */
 
   function addIncomeSource() {
     const amt = Number(source.amount);
     if (!source.name || isNaN(amt) || amt < 0) return;
-    setIncomeSources((prev) => [
-      { id: crypto.randomUUID(), name: source.name, amount: amt },
-      ...prev,
-    ]);
+    setState((s) => ({
+      ...s,
+      incomeSources: [
+        { id: crypto.randomUUID(), name: source.name, amount: amt },
+        ...(s.incomeSources || []),
+      ],
+    }));
     setSource({ name: "", amount: "" });
   }
 
   function removeIncomeSource(id) {
-    setIncomeSources((prev) => prev.filter((i) => i.id !== id));
+    setState((s) => ({
+      ...s,
+      incomeSources: (s.incomeSources || []).filter((i) => i.id !== id),
+    }));
   }
 
   function addExpense() {
     const amt = Number(exp.amount);
     if (!exp.date || !exp.category || isNaN(amt) || amt <= 0) return;
-    setExpenses((prev) => [
-      { id: crypto.randomUUID(), ...exp, amount: amt },
-      ...prev,
-    ]);
+    setState((s) => ({
+      ...s,
+      expenses: [
+        { id: crypto.randomUUID(), ...exp, amount: amt },
+        ...(s.expenses || []),
+      ],
+    }));
     setExp({
       date: new Date().toISOString().slice(0, 10),
       category: exp.category,
@@ -218,17 +127,23 @@ export default function ExpenseTracker() {
   }
 
   function removeExpense(id) {
-    setExpenses((prev) => prev.filter((e) => e.id !== id));
+    setState((s) => ({
+      ...s,
+      expenses: (s.expenses || []).filter((e) => e.id !== id),
+    }));
   }
 
   function setBudget(category, value) {
     const amt = Number(value);
-    setCatBudgets((prev) => ({ ...prev, [category]: isNaN(amt) ? 0 : amt }));
+    setState((s) => ({
+      ...s,
+      catBudgets: { ...(s.catBudgets || {}), [category]: isNaN(amt) ? 0 : amt },
+    }));
   }
 
   function exportCSV() {
     const header = ["Date", "Category", "Description", "Amount (INR)"];
-    const rows = expenses
+    const rows = (expenses || [])
       .slice()
       .reverse()
       .map((e) => [
@@ -256,11 +171,9 @@ export default function ExpenseTracker() {
       return `Keep it under ${MAX_CATEGORY_NAME_LEN} characters.`;
     if (!/^[A-Za-z0-9 ]+$/.test(name))
       return "Use letters, numbers, and spaces only.";
-    if (
-      categories.some((c) => c.toLowerCase() === name.toLowerCase())
-    )
+    if ((categories || []).some((c) => c.toLowerCase() === name.toLowerCase()))
       return "That category already exists.";
-    if (categories.length >= MAX_CATEGORIES)
+    if ((categories || []).length >= MAX_CATEGORIES)
       return `You can have up to ${MAX_CATEGORIES} categories.`;
     return "";
   }
@@ -272,37 +185,39 @@ export default function ExpenseTracker() {
       return;
     }
     const name = newCat.trim();
-    setCategories((prev) => [...prev, name]);
-    setCatBudgets((prev) => ({ ...prev, [name]: prev[name] ?? 0 }));
+    setState((s) => ({
+      ...s,
+      categories: [...(s.categories || []), name],
+      catBudgets: { ...(s.catBudgets || {}), [name]: s.catBudgets?.[name] ?? 0 },
+    }));
     setNewCat("");
     setCatError("");
   }
 
   function deleteCategory(name) {
-    // Don't allow deleting "Other" (we need somewhere to reassign)
-    if (name === "Other") return;
+    if (name === "Other") return; // keep a fallback
 
-    // Reassign any expenses in this category to "Other"
-    setExpenses((prev) =>
-      prev.map((e) => (e.category === name ? { ...e, category: "Other" } : e))
-    );
+    setState((s) => ({
+      ...s,
+      // reassign expenses to "Other"
+      expenses: (s.expenses || []).map((e) =>
+        e.category === name ? { ...e, category: "Other" } : e
+      ),
+      // drop budget entry
+      catBudgets: Object.fromEntries(
+        Object.entries(s.catBudgets || {}).filter(([k]) => k !== name)
+      ),
+      // remove from list
+      categories: (s.categories || []).filter((c) => c !== name),
+    }));
 
-    // Remove budget entry
-    setCatBudgets((prev) => {
-      const { [name]: _, ...rest } = prev;
-      return rest;
-    });
-
-    // Remove from list
-    setCategories((prev) => prev.filter((c) => c !== name));
-
-    // If the current form is using the deleted category, flip it to Other
+    // if the form was using the removed category
     setExp((prev) =>
       prev.category === name ? { ...prev, category: "Other" } : prev
     );
   }
 
-  // month dropdown options (last 12 months)
+  /* --------------- Month options --------------- */
   const monthOptions = useMemo(() => {
     const list = [];
     const now = new Date();
@@ -322,12 +237,12 @@ export default function ExpenseTracker() {
   }, []);
 
   /* ---------------- UI ---------------- */
-
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-indigo-50 via-white to-sky-100 p-6">
       <div className="mx-auto max-w-5xl">
         {/* Header */}
-        <header className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <header className="mb-6 flex flex-col gap-2 sm:flex-row sm:flex-nowrap sm:items-end sm:justify-between">
+          {/* left side: title + blurb */}
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-indigo-700">
               Expense Tracker
@@ -337,13 +252,15 @@ export default function ExpenseTracker() {
             </h1>
             <p className="text-sm text-gray-500">
               Track monthly income (multiple sources), budgets per category, and
-              expenses. All data is saved locally.
+              expenses. Data is saved locally and (if signed in) to your account.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* right side: controls */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {/* Month select — fixed width so it doesn’t get cut */}
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="w-56">
+              <SelectTrigger className="min-w-[14rem] w-[14rem]">
                 <SelectValue placeholder="Select month" />
               </SelectTrigger>
               <SelectContent>
@@ -355,10 +272,16 @@ export default function ExpenseTracker() {
               </SelectContent>
             </Select>
 
-            <Button variant="outline" onClick={exportCSV} className="gap-2">
+            <Button
+              variant="outline"
+              onClick={exportCSV}
+              className="gap-2 whitespace-nowrap"
+            >
               <Download className="h-4 w-4" />
               Export Expenses
             </Button>
+
+            <AuthButtons className="shrink-0" />
           </div>
         </header>
 
@@ -451,9 +374,7 @@ export default function ExpenseTracker() {
                         >
                           <span className="truncate">{i.name}</span>
                           <div className="flex items-center gap-3">
-                            <span className="font-medium">
-                              {fmt(i.amount)}
-                            </span>
+                            <span className="font-medium">{fmt(i.amount)}</span>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -495,9 +416,7 @@ export default function ExpenseTracker() {
                       id="date"
                       type="date"
                       value={exp.date}
-                      onChange={(e) =>
-                        setExp({ ...exp, date: e.target.value })
-                      }
+                      onChange={(e) => setExp({ ...exp, date: e.target.value })}
                     />
                   </div>
                   <div className="sm:col-span-2">
@@ -580,9 +499,7 @@ export default function ExpenseTracker() {
                             </td>
                             <td className="p-2">{e.category}</td>
                             <td className="p-2">{e.description}</td>
-                            <td className="p-2 text-right">
-                              {fmt(e.amount)}
-                            </td>
+                            <td className="p-2 text-right">{fmt(e.amount)}</td>
                             <td className="p-2 text-right">
                               <Button
                                 variant="ghost"
@@ -629,10 +546,7 @@ export default function ExpenseTracker() {
                             outerRadius={90}
                           >
                             {totals.byCat.map((entry) => (
-                              <Cell
-                                key={entry.name}
-                                fill={colorFor(entry.name)}
-                              />
+                              <Cell key={entry.name} fill={colorFor(entry.name)} />
                             ))}
                           </Pie>
                           <Tooltip
@@ -766,13 +680,10 @@ export default function ExpenseTracker() {
 /* -----------------------------
    Small components
 ------------------------------ */
-
 function Stat({ label, value }) {
   return (
     <div className="rounded-2xl border bg-white p-4 shadow-sm">
-      <div className="text-xs uppercase tracking-wide text-gray-500">
-        {label}
-      </div>
+      <div className="text-xs uppercase tracking-wide text-gray-500">{label}</div>
       <div className="mt-1 text-xl font-semibold">{value}</div>
     </div>
   );
@@ -781,10 +692,7 @@ function Stat({ label, value }) {
 function ProgressBar({ percent }) {
   return (
     <div className="h-3 w-full rounded-full bg-gray-200">
-      <div
-        className="h-3 rounded-full bg-indigo-500"
-        style={{ width: `${percent}%` }}
-      />
+      <div className="h-3 rounded-full bg-indigo-500" style={{ width: `${percent}%` }} />
     </div>
   );
 }
@@ -806,48 +714,14 @@ function TipsDialog() {
                 4) Add expenses with date, category, and amount.
               </p>
               <p>
-                Your data is saved to your browser (localStorage) per month. Use{" "}
-                <strong>Export Expenses</strong> to download a CSV.
+                Your data is saved to your browser and (if signed in) to your account.
+                Use <strong>Export Expenses</strong> to download a CSV.
               </p>
-              <p>
-                Tip: Use budgets to see over/under for each category at a glance.
-              </p>
+              <p>Tip: Budgets show over/under for each category at a glance.</p>
             </div>
           </DialogDescription>
         </DialogHeader>
       </DialogContent>
     </Dialog>
   );
-}
-
-/* -----------------------------
-   Dev-only test suite
------------------------------- */
-function runSelfTests() {
-  const assert = (name, cond, info = "") => {
-    const msg = `[TEST] ${name}: ${cond ? "PASS" : "FAIL"}${
-      info ? " — " + info : ""
-    }`;
-    console[cond ? "log" : "error"](msg);
-  };
-
-  // Test 1: CSV newline bug is fixed
-  const header = ["Date", "Category"];
-  const rows = [
-    ["2025-08-01", "Groceries"],
-    ["2025-08-02", "Rent"],
-  ];
-  const csv = buildCSV([header, ...rows]);
-  assert(
-    "CSV has one newline per row",
-    csv.split("\n").length === rows.length + 1,
-    csv
-  );
-
-  // Test 2: monthKey formatting
-  const mk = monthKey("2025-08-05");
-  assert("monthKey formats YYYY-MM", mk === "2025-08", mk);
-
-  // Test 3: fmt currency basic
-  assert("fmt(0) => ₹0", fmt(0) === "₹0", fmt(0));
 }
