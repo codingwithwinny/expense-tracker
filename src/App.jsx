@@ -1,18 +1,20 @@
 // src/App.jsx
 import React, { useMemo, useState } from "react";
+// eslint-disable-next-line no-unused-vars
 import { motion } from "framer-motion";
 
 import useAuth from "@/hooks/useAuth";
 import useMonthData from "@/hooks/useMonthData";
 import { fmt, monthKey, buildCSV } from "@/lib/utils";
 import {
-  CATEGORIES as DEFAULT_CATEGORIES,
+  DEFAULT_CATEGORIES,
   MAX_CATEGORIES,
   MAX_CATEGORY_NAME_LEN,
   COLORS,
 } from "@/lib/constants";
 
 import AuthButtons from "@/components/AuthButtons";
+import AuthPage from "@/components/AuthPage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,29 +45,46 @@ import {
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
-/* -----------------------------
-   Small helper (stable colors)
------------------------------- */
+const hoverFx = {
+  whileHover: { y: -3, scale: 1.01 },
+  whileTap: { scale: 0.997 },
+  transition: { type: "spring", stiffness: 300, damping: 20, mass: 0.5 },
+};
+
+/* Stable color per category (chart cells) */
 function colorFor(name) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return COLORS[h % COLORS.length];
 }
 
-/* -----------------------------
-   App
------------------------------- */
 export default function ExpenseTracker() {
-  // Month selector
   const [selectedMonth, setSelectedMonth] = useState(monthKey());
+  const { user, loading } = useAuth();
 
-  // Auth state
-  const { user /*, pending*/ } = useAuth();
+  // Listen for auth events
+  React.useEffect(() => {
+    const handleAuthError = (event) => {
+      console.error("❌ Auth error:", event.detail);
+      // You can show a toast notification here if needed
+    };
 
-  // Month data (auto-loads & debounced-saves when user/month changes)
+    const handleAuthSuccess = () => {
+      // You can show a success notification here if needed
+    };
+
+    window.addEventListener("auth:error", handleAuthError);
+    window.addEventListener("auth:success", handleAuthSuccess);
+
+    return () => {
+      window.removeEventListener("auth:error", handleAuthError);
+      window.removeEventListener("auth:success", handleAuthSuccess);
+    };
+  }, []);
+
+  // Loads + saves month data automatically (local + cloud if signed in)
   const { state, setState, totals } = useMonthData(user, selectedMonth);
 
-  // Always have safe defaults in case Firestore/local has partial data
   const {
     incomeSources = [],
     expenses = [],
@@ -73,7 +92,7 @@ export default function ExpenseTracker() {
     categories = DEFAULT_CATEGORIES,
   } = state;
 
-  // UI form state
+  // Forms
   const [source, setSource] = useState({ name: "Salary", amount: "" });
   const [exp, setExp] = useState({
     date: new Date().toISOString().slice(0, 10),
@@ -82,15 +101,61 @@ export default function ExpenseTracker() {
     amount: "",
   });
 
-  // Category manager UI
+  // Category manager
   const [newCat, setNewCat] = useState("");
   const [catError, setCatError] = useState("");
 
-  /* --------------- Actions (use setState) --------------- */
+  /* --------------- Month options (last 12) --------------- */
+  const monthOptions = useMemo(() => {
+    const list = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}`;
+      const label = d.toLocaleDateString("en-IN", {
+        month: "long",
+        year: "numeric",
+      });
+      list.push({ key, label });
+    }
+    return list;
+  }, []);
 
+  // Show loading state while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen w-full bg-gradient-to-br from-indigo-50 via-white to-sky-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show authentication page if user is not logged in
+  if (!user) {
+    return <AuthPage />;
+  }
+
+  /* ---------------- Actions ---------------- */
   function addIncomeSource() {
     const amt = Number(source.amount);
-    if (!source.name || isNaN(amt) || amt < 0) return;
+    if (!source.name.trim()) {
+      alert("Please enter a source name");
+      return;
+    }
+    if (isNaN(amt) || amt < 0) {
+      alert("Please enter a valid amount");
+      return;
+    }
+    if (amt > 10000000) {
+      alert("Amount cannot exceed ₹10,000,000");
+      return;
+    }
     setState((s) => ({
       ...s,
       incomeSources: [
@@ -110,7 +175,32 @@ export default function ExpenseTracker() {
 
   function addExpense() {
     const amt = Number(exp.amount);
-    if (!exp.date || !exp.category || isNaN(amt) || amt <= 0) return;
+    if (!exp.date) {
+      alert("Please select a date");
+      return;
+    }
+    if (!exp.category) {
+      alert("Please select a category");
+      return;
+    }
+    if (isNaN(amt) || amt <= 0) {
+      alert("Please enter a valid amount");
+      return;
+    }
+
+    // Validate amount
+    if (amt > 10000000) {
+      alert("Amount cannot exceed ₹10,000,000");
+      return;
+    }
+
+    // Validate date (not in future)
+    const today = new Date();
+    const expenseDate = new Date(exp.date);
+    if (expenseDate > today) {
+      alert("Cannot add expenses for future dates");
+      return;
+    }
     setState((s) => ({
       ...s,
       expenses: [
@@ -135,6 +225,10 @@ export default function ExpenseTracker() {
 
   function setBudget(category, value) {
     const amt = Number(value);
+    if (amt > 10000000) {
+      alert("Budget cannot exceed ₹10,000,000");
+      return;
+    }
     setState((s) => ({
       ...s,
       catBudgets: { ...(s.catBudgets || {}), [category]: isNaN(amt) ? 0 : amt },
@@ -162,8 +256,7 @@ export default function ExpenseTracker() {
     URL.revokeObjectURL(url);
   }
 
-  /* --------------- Category manager --------------- */
-
+  /* ------------- Category manager helpers ------------- */
   function validateCategoryName(nameRaw) {
     const name = (nameRaw || "").trim();
     if (!name) return "Enter a category name.";
@@ -188,7 +281,10 @@ export default function ExpenseTracker() {
     setState((s) => ({
       ...s,
       categories: [...(s.categories || []), name],
-      catBudgets: { ...(s.catBudgets || {}), [name]: s.catBudgets?.[name] ?? 0 },
+      catBudgets: {
+        ...(s.catBudgets || {}),
+        [name]: s.catBudgets?.[name] ?? 0,
+      },
     }));
     setNewCat("");
     setCatError("");
@@ -196,71 +292,47 @@ export default function ExpenseTracker() {
 
   function deleteCategory(name) {
     if (name === "Other") return; // keep a fallback
-
     setState((s) => ({
       ...s,
-      // reassign expenses to "Other"
       expenses: (s.expenses || []).map((e) =>
         e.category === name ? { ...e, category: "Other" } : e
       ),
-      // drop budget entry
       catBudgets: Object.fromEntries(
         Object.entries(s.catBudgets || {}).filter(([k]) => k !== name)
       ),
-      // remove from list
       categories: (s.categories || []).filter((c) => c !== name),
     }));
-
-    // if the form was using the removed category
     setExp((prev) =>
       prev.category === name ? { ...prev, category: "Other" } : prev
     );
   }
-
-  /* --------------- Month options --------------- */
-  const monthOptions = useMemo(() => {
-    const list = [];
-    const now = new Date();
-    for (let i = 0; i < 12; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-        2,
-        "0"
-      )}`;
-      const label = d.toLocaleDateString("en-IN", {
-        month: "long",
-        year: "numeric",
-      });
-      list.push({ key, label });
-    }
-    return list;
-  }, []);
 
   /* ---------------- UI ---------------- */
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-indigo-50 via-white to-sky-100 p-6">
       <div className="mx-auto max-w-5xl">
         {/* Header */}
-        <header className="mb-6 flex flex-col gap-2 sm:flex-row sm:flex-nowrap sm:items-end sm:justify-between">
+        <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-nowrap sm:items-end sm:justify-between">
           {/* left side: title + blurb */}
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-indigo-700">
+            <h1 className="text-3xl font-bold tracking-tight text-indigo-700 flex items-center gap-2">
               Expense Tracker
               <span className="ml-2 align-middle rounded-full bg-gradient-to-r from-indigo-500 to-violet-600 px-2 py-0.5 text-xs font-medium text-white animate-pulse">
                 PWA
               </span>
             </h1>
-            <p className="text-sm text-gray-500">
-              Track monthly income (multiple sources), budgets per category, and
-              expenses. Data is saved locally and (if signed in) to your account.
+            <p className="text-sm text-gray-500 italic">
+              Powered by{" "}
+              <span className="font-semibold text-indigo-700">Ancy</span> — your
+              simple way to manage money smartly.
             </p>
           </div>
 
           {/* right side: controls */}
-          <div className="flex items-center gap-3 flex-shrink-0">
-            {/* Month select — fixed width so it doesn’t get cut */}
+          <div className="flex items-center gap-3 flex-shrink-0 flex-wrap md:flex-nowrap">
+            {/* Month select */}
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="min-w-[14rem] w-[14rem]">
+              <SelectTrigger className="min-w-[14rem] w-[14rem] h-10 md:h-9">
                 <SelectValue placeholder="Select month" />
               </SelectTrigger>
               <SelectContent>
@@ -275,13 +347,16 @@ export default function ExpenseTracker() {
             <Button
               variant="outline"
               onClick={exportCSV}
-              className="gap-2 whitespace-nowrap"
+              className="gap-2 whitespace-nowrap h-10 md:h-9"
             >
               <Download className="h-4 w-4" />
               Export Expenses
             </Button>
 
-            <AuthButtons className="shrink-0" />
+            {/* Auth buttons already handle their own width; just normalize height */}
+            <div className="h-10 md:h-9">
+              <AuthButtons className="h-full" />
+            </div>
           </div>
         </header>
 
@@ -291,11 +366,12 @@ export default function ExpenseTracker() {
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35 }}
+            {...hoverFx}
             className="md:col-span-2"
           >
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-indigo-700">
                   <Wallet className="h-5 w-5" />
                   Monthly Summary
                 </CardTitle>
@@ -321,10 +397,11 @@ export default function ExpenseTracker() {
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: 0.05 }}
+            {...hoverFx}
           >
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-indigo-700">
                   <Wallet2 className="h-5 w-5" />
                   Income Sources
                 </CardTitle>
@@ -337,6 +414,7 @@ export default function ExpenseTracker() {
                       <Input
                         placeholder="e.g., Salary, Freelance"
                         value={source.name}
+                        className="h-9 w-full"
                         onChange={(e) =>
                           setSource({ ...source, name: e.target.value })
                         }
@@ -357,7 +435,11 @@ export default function ExpenseTracker() {
                       />
                     </div>
                   </div>
-                  <Button onClick={addIncomeSource} className="w-full">
+
+                  <Button
+                    onClick={addIncomeSource}
+                    className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white border-transparent hover:opacity-95"
+                  >
                     Add Source
                   </Button>
 
@@ -378,6 +460,7 @@ export default function ExpenseTracker() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              title="Delete"
                               onClick={() => removeIncomeSource(i.id)}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -399,33 +482,38 @@ export default function ExpenseTracker() {
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35 }}
+            {...hoverFx}
             className="lg:col-span-2"
           >
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-indigo-700">
                   <Plus className="h-5 w-5" />
                   Add Expense
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
-                  <div className="sm:col-span-2">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-6 md:items-end">
+                  {/* Date */}
+                  <div className="md:col-span-2">
                     <Label htmlFor="date">Date</Label>
                     <Input
                       id="date"
                       type="date"
+                      className="h-10 md:h-9 w-full"
                       value={exp.date}
                       onChange={(e) => setExp({ ...exp, date: e.target.value })}
                     />
                   </div>
-                  <div className="sm:col-span-2">
+
+                  {/* Category */}
+                  <div className="md:col-span-2">
                     <Label>Category</Label>
                     <Select
                       value={exp.category}
                       onValueChange={(v) => setExp({ ...exp, category: v })}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-10 md:h-9">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -437,11 +525,14 @@ export default function ExpenseTracker() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="sm:col-span-2">
+
+                  {/* Amount */}
+                  <div className="md:col-span-2">
                     <Label htmlFor="amount">Amount</Label>
                     <Input
                       id="amount"
                       inputMode="decimal"
+                      className="h-10 md:h-9"
                       placeholder="e.g., 1200"
                       value={exp.amount}
                       onChange={(e) =>
@@ -452,10 +543,13 @@ export default function ExpenseTracker() {
                       }
                     />
                   </div>
-                  <div className="sm:col-span-5">
+
+                  {/* Description (full width on desktop row 2) */}
+                  <div className="md:col-span-5">
                     <Label htmlFor="desc">Description (optional)</Label>
                     <Input
                       id="desc"
+                      className="h-10 md:h-9"
                       placeholder="e.g., BMTC pass, groceries at DMart"
                       value={exp.description}
                       onChange={(e) =>
@@ -463,14 +557,68 @@ export default function ExpenseTracker() {
                       }
                     />
                   </div>
-                  <div className="sm:col-span-1 flex items-end">
-                    <Button className="w-full" onClick={addExpense}>
+
+                  {/* Add button (sticks to baseline on desktop) */}
+                  <div className="md:col-span-1">
+                    <Button
+                      className="w-full h-10 md:h-9 bg-gradient-to-r from-brand-start to-brand-end text-white border-transparent hover:opacity-95"
+                      onClick={addExpense}
+                    >
                       Add
                     </Button>
                   </div>
                 </div>
 
-                <div className="mt-6 overflow-x-auto">
+                {/* Mobile list (cards) */}
+                <div className="mt-6 md:hidden">
+                  {expenses.length === 0 ? (
+                    <p className="p-4 text-center text-gray-400">
+                      No expenses yet. Add your first one above.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {expenses.map((e) => (
+                        <li
+                          key={e.id}
+                          className="rounded-xl border bg-white p-3 shadow-sm"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-medium">
+                                {e.category}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {new Date(e.date).toLocaleDateString()}
+                              </div>
+                              {e.description ? (
+                                <div className="mt-1 text-xs text-gray-600">
+                                  {e.description}
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm font-semibold">
+                                {fmt(e.amount)}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="mt-1"
+                                onClick={() => removeExpense(e.id)}
+                                title="Delete"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                {/* Desktop table */}
+                <div className="mt-6 hidden md:block overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-gray-100 text-left text-gray-600">
@@ -505,6 +653,7 @@ export default function ExpenseTracker() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => removeExpense(e.id)}
+                                title="Delete"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -519,15 +668,17 @@ export default function ExpenseTracker() {
             </Card>
           </motion.div>
 
+          {/* Right column */}
           <div className="space-y-6">
             <motion.div
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: 0.05 }}
+              {...hoverFx}
             >
               <Card>
                 <CardHeader>
-                  <CardTitle>By Category</CardTitle>
+                  <CardTitle className="text-indigo-700">By Category</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {totals.byCat.length === 0 ? (
@@ -546,7 +697,10 @@ export default function ExpenseTracker() {
                             outerRadius={90}
                           >
                             {totals.byCat.map((entry) => (
-                              <Cell key={entry.name} fill={colorFor(entry.name)} />
+                              <Cell
+                                key={entry.name}
+                                fill={colorFor(entry.name)}
+                              />
                             ))}
                           </Pie>
                           <Tooltip
@@ -565,10 +719,11 @@ export default function ExpenseTracker() {
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: 0.1 }}
+              {...hoverFx}
             >
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2 text-indigo-700">
                     <Target className="h-5 w-5" />
                     Category Budgets
                   </CardTitle>
@@ -576,7 +731,10 @@ export default function ExpenseTracker() {
                 <CardContent>
                   <div className="space-y-3">
                     {categories.map((c) => (
-                      <div key={c} className="grid grid-cols-5 items-center gap-2">
+                      <div
+                        key={c}
+                        className="grid grid-cols-5 items-center gap-2"
+                      >
                         <div className="col-span-2 text-sm">{c}</div>
                         <div className="col-span-2">
                           <Input
@@ -584,14 +742,18 @@ export default function ExpenseTracker() {
                             placeholder="Budget (INR)"
                             value={catBudgets[c] ?? ""}
                             onChange={(e) =>
-                              setBudget(c, e.target.value.replace(/[^0-9]/g, ""))
+                              setBudget(
+                                c,
+                                e.target.value.replace(/[^0-9]/g, "")
+                              )
                             }
                           />
                         </div>
                         <div className="text-right text-xs text-gray-500">
                           {(() => {
                             const spent =
-                              totals.byCat.find((x) => x.name === c)?.value || 0;
+                              totals.byCat.find((x) => x.name === c)?.value ||
+                              0;
                             const bud = Number(catBudgets[c]) || 0;
                             const diff = bud - spent;
                             return bud > 0
@@ -613,10 +775,13 @@ export default function ExpenseTracker() {
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.35, delay: 0.15 }}
+              {...hoverFx}
             >
               <Card>
                 <CardHeader>
-                  <CardTitle>Manage Categories</CardTitle>
+                  <CardTitle className="text-indigo-700">
+                    Manage Categories
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex gap-2">
@@ -629,7 +794,12 @@ export default function ExpenseTracker() {
                       }}
                       maxLength={MAX_CATEGORY_NAME_LEN}
                     />
-                    <Button onClick={addCategory}>Add</Button>
+                    <Button
+                      onClick={addCategory}
+                      className="bg-gradient-to-r from-indigo-500 to-violet-600 text-white border-transparent hover:opacity-95"
+                    >
+                      Add
+                    </Button>
                   </div>
                   {catError ? (
                     <p className="mt-2 text-xs text-red-600">{catError}</p>
@@ -643,10 +813,9 @@ export default function ExpenseTracker() {
                     {categories.map((c) => (
                       <span
                         key={c}
-                        className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium"
+                        className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium text-slate-700"
                         style={{
                           background: `${colorFor(c)}20`,
-                          color: colorFor(c),
                           borderColor: `${colorFor(c)}40`,
                         }}
                       >
@@ -683,7 +852,9 @@ export default function ExpenseTracker() {
 function Stat({ label, value }) {
   return (
     <div className="rounded-2xl border bg-white p-4 shadow-sm">
-      <div className="text-xs uppercase tracking-wide text-gray-500">{label}</div>
+      <div className="text-xs uppercase tracking-wide text-gray-500">
+        {label}
+      </div>
       <div className="mt-1 text-xl font-semibold">{value}</div>
     </div>
   );
@@ -692,7 +863,10 @@ function Stat({ label, value }) {
 function ProgressBar({ percent }) {
   return (
     <div className="h-3 w-full rounded-full bg-gray-200">
-      <div className="h-3 rounded-full bg-indigo-500" style={{ width: `${percent}%` }} />
+      <div
+        className="h-3 rounded-full bg-gradient-to-r from-indigo-500 to-violet-600"
+        style={{ width: `${percent}%` }}
+      />
     </div>
   );
 }
@@ -705,7 +879,7 @@ function TipsDialog() {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Quick Start</DialogTitle>
+          <DialogTitle className="text-indigo-700">Quick Start</DialogTitle>
           <DialogDescription asChild>
             <div className="space-y-3 text-gray-600">
               <p>
@@ -714,8 +888,8 @@ function TipsDialog() {
                 4) Add expenses with date, category, and amount.
               </p>
               <p>
-                Your data is saved to your browser and (if signed in) to your account.
-                Use <strong>Export Expenses</strong> to download a CSV.
+                Your data is saved to your browser and (if signed in) to your
+                account. Use <strong>Export Expenses</strong> to download a CSV.
               </p>
               <p>Tip: Budgets show over/under for each category at a glance.</p>
             </div>

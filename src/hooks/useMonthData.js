@@ -1,9 +1,13 @@
+// src/hooks/useMonthData.js
 import { useEffect, useMemo, useRef, useState } from "react";
 import { loadMonth, saveMonth } from "@/lib/firebase";
+import { DEFAULT_CATEGORIES } from "@/lib/constants";
 
 /**
- * Handles loading + saving month data (localStorage + Firestore when signed in)
- * Returns: { state, setState, totals }
+ * Loads & saves month data (localStorage + Firestore when signed in),
+ * and performs a one-time "first-sync" merge:
+ *  - If cloud is empty and local has data -> push local up to cloud.
+ *  - If local is empty and cloud has data -> pull cloud down to local.
  */
 export default function useMonthData(user, monthKey) {
   const [state, setState] = useState({
@@ -13,8 +17,18 @@ export default function useMonthData(user, monthKey) {
     categories: [],
   });
 
-  // 1) Load LOCAL immediately when month changes
+  // --- 1) Load LOCAL immediately when the month changes (only if user is authenticated)
   useEffect(() => {
+    if (!user) {
+      setState({
+        incomeSources: [],
+        expenses: [],
+        catBudgets: {},
+        categories: DEFAULT_CATEGORIES,
+      });
+      return;
+    }
+
     const raw = localStorage.getItem(`expense-tracker:${monthKey}`);
     if (raw) {
       try {
@@ -23,54 +37,92 @@ export default function useMonthData(user, monthKey) {
           incomeSources: parsed.incomeSources || [],
           expenses: parsed.expenses || [],
           catBudgets: parsed.catBudgets || {},
-          categories: parsed.categories || [],
+          categories:
+            Array.isArray(parsed.categories) && parsed.categories.length
+              ? parsed.categories
+              : DEFAULT_CATEGORIES,
         });
       } catch {
-        setState({ incomeSources: [], expenses: [], catBudgets: {}, categories: [] });
+        setState({
+          incomeSources: [],
+          expenses: [],
+          catBudgets: {},
+          categories: DEFAULT_CATEGORIES,
+        });
       }
     } else {
-      setState({ incomeSources: [], expenses: [], catBudgets: {}, categories: [] });
+      setState({
+        incomeSources: [],
+        expenses: [],
+        catBudgets: {},
+        categories: DEFAULT_CATEGORIES,
+      });
     }
-  }, [monthKey]);
+  }, [monthKey, user]);
 
-  // 2) If signed in, try cloud and replace state if document exists
+  // --- 2) If signed in, load CLOUD and reconcile with LOCAL (first-sync)
   useEffect(() => {
     let alive = true;
     (async () => {
       if (!user) return;
-      const cloud = await loadMonth(user.uid, monthKey);
-      if (alive && cloud) {
-        setState({
-          incomeSources: cloud.incomeSources || [],
-          expenses: cloud.expenses || [],
-          catBudgets: cloud.catBudgets || {},
-          categories: cloud.categories || state.categories || [],
-        });
+
+      // Snapshot of local when we attempt cloud load
+      const localAtLoad = state;
+
+      const cloud = await loadMonth(user.uid, monthKey); // returns a complete shape
+
+      if (!alive) return;
+
+      const localEmpty =
+        (localAtLoad.incomeSources?.length || 0) === 0 &&
+        (localAtLoad.expenses?.length || 0) === 0 &&
+        Object.keys(localAtLoad.catBudgets || {}).length === 0 &&
+        (localAtLoad.categories?.length || 0) === 0;
+
+      const cloudEmpty =
+        (cloud.incomeSources?.length || 0) === 0 &&
+        (cloud.expenses?.length || 0) === 0 &&
+        Object.keys(cloud.catBudgets || {}).length === 0 &&
+        (cloud.categories?.length || 0) === 0;
+
+      if (cloudEmpty && !localEmpty) {
+        // First sign-in on this device/month: seed cloud with LOCAL
+        await saveMonth(user.uid, monthKey, localAtLoad);
+        setState(localAtLoad);
+      } else if (!cloudEmpty && localEmpty) {
+        // Local is empty but cloud has data: adopt CLOUD
+        setState(cloud);
+      } else {
+        // Both have something or both empty: choose CLOUD as source of truth
+        setState(cloud);
       }
     })();
-    return () => { alive = false; };
+
+    return () => {
+      alive = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, monthKey]);
 
-  // 3) Save to LOCAL anytime state changes
+  // --- 3) Save to LOCAL whenever state changes (only if user is authenticated)
   useEffect(() => {
-    const payload = JSON.stringify(state);
-    localStorage.setItem(`expense-tracker:${monthKey}`, payload);
-  }, [state, monthKey]);
+    if (user) {
+      localStorage.setItem(`expense-tracker:${monthKey}`, JSON.stringify(state));
+    }
+  }, [state, monthKey, user]);
 
-  // 4) Debounced save to CLOUD when signed in
+  // --- 4) Debounced save to CLOUD when signed in
   const timer = useRef(null);
   useEffect(() => {
     if (!user) return;
     clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      // also store categories in the cloud
       saveMonth(user.uid, monthKey, state).catch(() => {});
-    }, 500);
+    }, 400);
     return () => clearTimeout(timer.current);
   }, [user, monthKey, state]);
 
-  // 5) Derived totals
+  // --- 5) Derived totals
   const totals = useMemo(() => {
     const income = (state.incomeSources || []).reduce(
       (s, i) => s + (Number(i.amount) || 0),
@@ -81,7 +133,8 @@ export default function useMonthData(user, monthKey) {
       0
     );
     const remaining = income - totalExp;
-    const util = income > 0 ? Math.min(100, Math.round((totalExp / income) * 100)) : 0;
+    const util =
+      income > 0 ? Math.min(100, Math.round((totalExp / income) * 100)) : 0;
 
     const byCatMap = (state.expenses || []).reduce((acc, e) => {
       const k = e.category || "Other";

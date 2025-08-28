@@ -1,0 +1,18 @@
+{
+  "projects": {
+    "default": "ancyexpensetracker"
+  },
+  "targets": {
+    "ancyexpensetracker": {
+      "hosting": {
+        "main": [
+          "ancyexpensetracker"
+        ],
+        "custom-domain": [
+          "app-ancy-co-in"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

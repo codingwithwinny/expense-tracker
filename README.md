@@ -1,217 +1,247 @@
-Ancy Expense Tracker (PWA)
-
-A fast, modern expense tracker built with React + Vite and designed for mobile & desktop.
-Track income, expenses, and category budgets, visualize spending with a pie chart, export CSVs, and (optionally) sign in with Google to sync data to Firebase Firestore. Works offline as a Progressive Web App.
-
-<p align="center">
-  <img src="public/og-screenshot.png" alt="App screenshot" width="780" />
-</p>
+# 💰 Ancy Expense Tracker
 
 <div align="center">
 
+![React](https://img.shields.io/badge/React-18.0.0-blue?style=for-the-badge&logo=react)
+![Firebase](https://img.shields.io/badge/Firebase-9.0.0-orange?style=for-the-badge&logo=firebase)
+![PWA](https://img.shields.io/badge/PWA-Ready-green?style=for-the-badge&logo=pwa)
+![Vite](https://img.shields.io/badge/Vite-7.0.0-purple?style=for-the-badge&logo=vite)
+![Tailwind](https://img.shields.io/badge/Tailwind-3.0.0-38B2AC?style=for-the-badge&logo=tailwind-css)
+
+**A modern, responsive expense tracking Progressive Web App (PWA) built with React, Firebase, and Tailwind CSS.**
+
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-View%20App-brightgreen?style=for-the-badge&logo=google-chrome)](https://ancyexpensetracker.web.app)
+[![Custom Domain](https://img.shields.io/badge/Custom%20Domain-app.ancy.co.in-blue?style=for-the-badge)](https://app-ancy-co-in.web.app)
+
 </div>
 
-⸻
+---
 
-✨ Features
-• Multi-source income (salary, freelance, etc.)
-• Expense tracking with date, category, description, amount
-• Custom categories with per-category budgets
-• Visual breakdown by category (Recharts PieChart)
-• CSV export of expenses
-• Authentication: Google Sign-In (optional)
-• Cloud sync: per-month data saved to Firestore (optional)
-• Offline-first PWA: installable and works without a network
-• Beautiful UI: Tailwind + shadcn/ui, responsive and keyboard-friendly
+## ✨ Features
 
-⸻
+<div align="center">
 
-🧱 Tech Stack
-• Frontend: React 18, Vite, TailwindCSS, shadcn/ui, Framer Motion
-• Charts: Recharts
-• State & Data: Local storage + Firebase Firestore (optional)
-• Auth: Firebase Authentication (Google)
-• Build & Deploy: Vite, Firebase Hosting
-• PWA: vite-plugin-pwa
+| 🚀 **Core Features** | 📱 **PWA Features** | 🔐 **Security** |
+|---------------------|-------------------|-----------------|
+| • Expense Tracking | • Installable App | • Google Auth |
+| • Income Management | • Offline Support | • Secure Data |
+| • Category Budgets | • Push Notifications | • Cloud Sync |
+| • Visual Analytics | • Native Feel | • Real-time Updates |
 
-⸻
+</div>
 
-🚀 Getting Started
+### 🎯 Key Capabilities
 
-1. Clone & Install
+- **📊 Smart Analytics** - Beautiful charts and spending insights
+- **☁️ Cloud Sync** - Data automatically syncs across all devices
+- **📱 Mobile First** - Optimized for mobile and desktop
+- **🎨 Modern UI** - Clean design with smooth animations
+- **🔄 Real-time** - Instant updates and synchronization
+- **📈 Budget Tracking** - Set and monitor category budgets
 
-git clone https://github.com/<your-username>/expense-tracker.git
-cd expense-tracker
-npm ci # or: npm install
+---
 
-2. Environment Variables
+## 🚀 Live Demo
 
-Create .env (copy from .env.example) and fill in your Firebase project values:
+<div align="center">
 
-VITE_FIREBASE_API_KEY=...
-VITE_FIREBASE_AUTH_DOMAIN=...
-VITE_FIREBASE_PROJECT_ID=...
-VITE_FIREBASE_STORAGE_BUCKET=...
-VITE_FIREBASE_MESSAGING_SENDER_ID=...
-VITE_FIREBASE_APP_ID=...
+**🌐 Web Application**
+[ancyexpensetracker.web.app](https://ancyexpensetracker.web.app)
 
-You can find these in Firebase Console → Project Settings → General → “Your apps”.
+**🎯 Custom Domain**
+[app.ancy.co.in](https://app-ancy-co-in.web.app)
 
-3. Run Dev Server
+</div>
 
+---
+
+## 🛠️ Tech Stack
+
+<div align="center">
+
+| **Frontend** | **Backend** | **Styling** | **Deployment** |
+|-------------|------------|-------------|----------------|
+| React 18 | Firebase Auth | Tailwind CSS | Firebase Hosting |
+| Vite | Firestore DB | Framer Motion | PWA Ready |
+| TypeScript | Real-time Sync | shadcn/ui | Service Worker |
+
+</div>
+
+---
+
+## 📦 Quick Start
+
+### Prerequisites
+- Node.js 16+ 
+- npm or yarn
+- Firebase account
+
+### Installation
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/yourusername/ancy-expense-tracker.git
+cd ancy-expense-tracker
+
+# 2. Install dependencies
+npm install
+
+# 3. Set up Firebase
+# - Create a Firebase project
+# - Enable Authentication (Google provider)
+# - Enable Firestore Database
+# - Copy config to src/lib/firebase.js
+
+# 4. Start development server
 npm run dev
 
-# http://localhost:5173
-
-⸻
-
-🔥 Firebase Setup (Optional but recommended) 1. Create a Firebase project and enable:
-• Authentication → Sign-in method → Google → Enable
-• Firestore Database → Start in production mode
-• Hosting (optional for deployment) 2. Install Firebase CLI (once):
-
-npm i -g firebase-tools
-firebase login
-
-    3.	Initialize Hosting (in this repo):
-
-firebase init hosting
-
-# Public directory: dist
-
-# SPA rewrite all to /index.html: Yes
-
-    4.	Build & Deploy
-
+# 5. Build for production
 npm run build
-firebase deploy --only hosting
+```
 
-Custom Domain (Firebase Hosting)
-• Add your domain in Hosting → Custom domains, follow the CNAME instructions.
-• When the domain shows Connected, deploy your site.
-• If you see “Site Not Found”, it usually means you connected DNS but haven’t deployed yet (or you’re viewing a cached 404). Deploy then test in Incognito.
+### Firebase Configuration
 
-⸻
+1. **Create Firebase Project**
+   - Go to [Firebase Console](https://console.firebase.google.com)
+   - Create a new project
+   - Enable Google Authentication
+   - Create Firestore Database
 
-📦 Project Scripts
+2. **Update Configuration**
+   ```javascript
+   // src/lib/firebase.js
+   const firebaseConfig = {
+     apiKey: "your-api-key",
+     authDomain: "your-project.firebaseapp.com",
+     projectId: "your-project-id",
+     // ... other config
+   };
+   ```
 
-# Start dev server
+---
 
-npm run dev
+## 📱 PWA Features
 
-# Production build
+<div align="center">
 
-npm run build
+| **Feature** | **Description** |
+|------------|----------------|
+| 📲 **Installable** | Add to home screen on any device |
+| 🔌 **Offline Support** | Works without internet connection |
+| 🔔 **Push Notifications** | Stay updated with expense reminders |
+| ⚡ **Fast Loading** | Optimized for instant startup |
+| 🎯 **Native Feel** | Smooth animations and interactions |
 
-# Preview dist locally (optional)
+</div>
 
-npm run preview
+---
 
-⸻
+## 🏗️ Project Structure
 
-📁 Project Structure
-
+```
 src/
-components/
-AuthButtons.jsx # Google sign-in / sign-out
-ui/ # shadcn/ui primitives (Button, Card, etc.)
-hooks/
-useAuth.js # Firebase Auth helper
-useMonthData.js # Load/save month data (local + Firestore)
-lib/
-constants.js # Categories, limits, colors
-firebase.js # Firebase init
-utils.js # fmt(), monthKey(), CSV builder
-App.jsx # Main UI
-index.css # Tailwind entry + custom styles
-vite.config.js # Vite + PWA config
+├── components/          # React components
+│   ├── ui/             # Reusable UI components
+│   │   ├── button.jsx
+│   │   ├── card.jsx
+│   │   ├── dialog.jsx
+│   │   ├── input.jsx
+│   │   ├── label.jsx
+│   │   └── select.jsx
+│   ├── AuthButtons.jsx # Authentication components
+│   ├── AuthPage.jsx    # Login/Register page
+│   └── charts/         # Chart components
+├── hooks/              # Custom React hooks
+│   ├── useAuth.js      # Authentication hook
+│   └── useMonthData.js # Data management hook
+├── lib/                # Utilities and configurations
+│   ├── firebase.js     # Firebase configuration
+│   ├── constants.js    # App constants
+│   └── utils.js        # Utility functions
+└── assets/             # Static assets
+```
 
-⸻
+---
 
-📱 PWA
-• This app is PWA-ready via vite-plugin-pwa.
-• On build, a service worker + manifest are generated.
-• You can “Install” the app on desktop/mobile for an app-like experience.
+## 🎨 Features Overview
 
-⸻
+### 🔐 Authentication
+- **Google Sign-in** - Secure authentication with Google
+- **User Isolation** - Each user's data is completely isolated
+- **Session Management** - Automatic login state management
 
-🧭 Common Pitfalls & Fixes
-• Tailwind error: Cannot apply unknown utility class 'text-navy'
-Tailwind only knows built-in classes. Either:
-• Replace with a built-in (text-slate-900, text-indigo-900, etc.), or
-• Extend Tailwind in tailwind.config.js:
+### 💰 Expense Management
+- **Add/Edit/Delete** - Full CRUD operations for expenses
+- **Categories** - Custom categories with color coding
+- **Budgets** - Set and track category budgets
+- **Income Tracking** - Multiple income sources support
 
-theme: {
-extend: {
-colors: { navy: "#0b1b34" }
-}
-}
+### 📊 Analytics
+- **Visual Charts** - Beautiful pie charts for spending breakdown
+- **Category Analysis** - Detailed spending by category
+- **Budget Tracking** - Monitor budget vs actual spending
+- **Data Export** - Export expenses to CSV format
 
-Restart Vite after changing the config.
+### ☁️ Data Sync
+- **Real-time Sync** - Instant synchronization across devices
+- **Offline Storage** - Works without internet connection
+- **Cross-device** - Access data from any device
+- **Automatic Backup** - Cloud backup of all data
 
-    •	Vite/Babel: “Identifier ‘fmt’ has already been declared.”
+---
 
-You’re importing fmt from @/lib/utils and also declaring a local fmt. Remove the local const fmt = … or rename it.
-• JSX: “Adjacent JSX elements must be wrapped…”
-Wrap siblings in a fragment <>...</> or ensure there’s a single parent.
-Example: a progress bar should render one inner bar div inside the track.
-• Button attribute typo
-Use className="gap-2 whitespace-nowrap" instead of className="gap-2" whitespace-nowrap.
-• Custom Domain shows “Site Not Found”
-DNS may be connected but you haven’t deployed the app yet. Run:
+## 🚀 Deployment
 
+The app is automatically deployed to Firebase Hosting:
+
+```bash
+# Build the application
 npm run build
-firebase deploy --only hosting
 
-Then test in Incognito.
+# Deploy to Firebase
+firebase deploy
+```
 
-⸻
+### Custom Domain Setup
 
-🧪 Data Model (Firestore)
+1. **Add Custom Domain** in Firebase Console
+2. **Update DNS Records** as instructed
+3. **Deploy Application** to make it live
 
-Per user & month (example path):
+---
 
-users/{uid}/months/{YYYY-MM}
-{
-incomeSources: [{ id, name, amount }],
-expenses: [{ id, date(YYYY-MM-DD), category, description, amount }],
-catBudgets: { [categoryName]: number },
-categories: [ "Groceries", "Transport", ... ]
-}
+## 📄 License
 
-    •	Local state is always kept; Firestore sync is best-effort when signed in.
-    •	Changing the selected month loads/saves a separate document.
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
 
-⸻
+---
 
-🗺️ Roadmap
-• Dark mode
-• Monthly roll-ups & trends
-• Recurring expenses
-• Multi-currency support
-• Better code-splitting & bundle size
+## 🤝 Contributing
 
-⸻
+We welcome contributions! Please follow these steps:
 
-🤝 Contributing 1. Fork & create a feature branch: git checkout -b feature/awesome-thing 2. Commit with clear messages 3. Open a PR against main
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/AmazingFeature`)
+3. **Commit** your changes (`git commit -m 'Add some AmazingFeature'`)
+4. **Push** to the branch (`git push origin feature/AmazingFeature`)
+5. **Open** a Pull Request
 
-⸻
+---
 
-📝 License
+## 📞 Support
 
-MIT © You
+- **Email**: support@ancy.co.in
+- **Issues**: [GitHub Issues](https://github.com/yourusername/ancy-expense-tracker/issues)
+- **Documentation**: [Wiki](https://github.com/yourusername/ancy-expense-tracker/wiki)
 
-⸻
+---
 
-🙌 Acknowledgements
-• shadcn/ui for clean, composable UI primitives
-• Recharts for simple charts
-• Vite for the instant dev server
-• Firebase for Auth, Firestore, and Hosting
+<div align="center">
 
-⸻
+**Built with ❤️ using React, Firebase, and Tailwind CSS**
 
-Screenshots:
+[![GitHub stars](https://img.shields.io/github/stars/yourusername/ancy-expense-tracker?style=social)](https://github.com/yourusername/ancy-expense-tracker)
+[![GitHub forks](https://img.shields.io/github/forks/yourusername/ancy-expense-tracker?style=social)](https://github.com/yourusername/ancy-expense-tracker)
+[![GitHub issues](https://img.shields.io/github/issues/yourusername/ancy-expense-tracker)](https://github.com/yourusername/ancy-expense-tracker/issues)
 
-public/og-screenshot.png # main screenshot
-public/mobile-shot.png # mobile layout
+</div>

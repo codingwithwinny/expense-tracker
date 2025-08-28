@@ -1,9 +1,10 @@
 import React from "react";
-function flattenItems(children, acc=[]) {
+function flattenItems(children, acc = []) {
   React.Children.forEach(children, (child) => {
     if (!child) return;
     if (child.type && child.type.displayName === "SelectItem") acc.push(child);
-    if (child.props && child.props.children) flattenItems(child.props.children, acc);
+    if (child.props && child.props.children)
+      flattenItems(child.props.children, acc);
   });
   return acc;
 }
@@ -16,13 +17,24 @@ export function Select({ value, onValueChange, children }) {
       onChange={(e) => onValueChange?.(e.target.value)}
     >
       {items.map((it, i) => (
-        <option key={i} value={it.props.value}>{it.props.children}</option>
+        <option key={i} value={it.props.value}>
+          {it.props.children}
+        </option>
       ))}
     </select>
   );
 }
-export function SelectTrigger({ children }) { return <>{children}</>; }
-export function SelectContent({ children }) { return <>{children}</>; }
-export function SelectValue() { return null; }
-export function SelectItem({ value, children }) { return null; }
+export function SelectTrigger({ children }) {
+  return <>{children}</>;
+}
+export function SelectContent({ children }) {
+  return <>{children}</>;
+}
+export function SelectValue() {
+  return null;
+}
+// eslint-disable-next-line no-unused-vars
+export function SelectItem({ value, children }) {
+  return null;
+}
 SelectItem.displayName = "SelectItem";

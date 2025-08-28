@@ -1,50 +1,156 @@
 @import "tailwindcss";
 
+/* ===== Sweet modern palette (soft, pleasing) ===== */
+:root {
+  /* primary gradient */
+  --brand-1: #8b5cf6; /* violet-500 */
+  --brand-2: #22d3ee; /* cyan-400 */
+
+  /* inks & surfaces */
+  --ink: #1f2937; /* slate-800 */
+  --muted-ink: #64748b; /* slate-500 */
+  --surface: #ffffff;
+  --surface-2: rgba(255, 255, 255, 0.7);
+  --ring: rgba(139, 92, 246, 0.25); /* violet glow */
+
+  /* subtle page bg */
+  --bg-a: #eef2ff; /* indigo-50 */
+  --bg-b: #f0f9ff; /* sky-50 */
+}
+
+/* Page background – gentle two-tone */
+body {
+  min-height: 100%;
+  background: radial-gradient(
+      1200px 600px at 100% 0%,
+      var(--bg-b),
+      transparent 60%
+    ),
+    radial-gradient(900px 500px at 0% 100%, var(--bg-a), transparent 55%),
+    var(--surface);
+  color: var(--ink);
+}
+
+/* ------------ helpers to match existing JSX class names ------------ */
+.text-navy {
+  color: var(--ink);
+}
+.text-navy-2 {
+  color: var(--muted-ink);
+}
+.bg-navy {
+  background-color: var(--ink);
+}
+
+/* Map Tailwind-like gradient utility trio you already use */
+.bg-gradient-to-r {
+  /* we’ll default to our brand gradient if from/to aren’t set */
+  background-image: linear-gradient(90deg, var(--brand-1), var(--brand-2));
+}
+.from-brand-start {
+  --brand-override-from: var(--brand-1);
+}
+.to-brand-end {
+  --brand-override-to: var(--brand-2);
+}
+/* When both overrides are present, use them */
+.bg-gradient-to-r.from-brand-start.to-brand-end {
+  background-image: linear-gradient(
+    90deg,
+    var(--brand-override-from, var(--brand-1)),
+    var(--brand-override-to, var(--brand-2))
+  );
+}
+
 /* ---- Base ---- */
 @layer base {
-  html, body, #root { height: 100%; }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
   body {
-    @apply antialiased text-gray-800;
-    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
+    @apply antialiased;
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, Segoe UI,
+      Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
   }
 }
 
-/* ---- Components (each is self-contained; no @apply of other custom classes) ---- */
+/* ---- Components ---- */
 @layer components {
+  /* soft cards with a touch of glass */
   .glass {
-    @apply rounded-2xl border border-gray-200/60 bg-white/70 shadow-lg backdrop-blur;
+    @apply rounded-2xl border bg-white/80 shadow-lg backdrop-blur;
+    border-color: rgba(148, 163, 184, 0.25); /* slate-300/25 */
   }
 
-  .hover-pop {
-    @apply transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-xl;
-  }
-
+  /* inputs */
   .field {
-    @apply w-full rounded-xl border border-gray-300/80 bg-white px-3 py-2 text-sm outline-none ring-0
-           focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200;
+    @apply w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none;
+    border-color: rgba(148, 163, 184, 0.6);
+  }
+  .field:focus {
+    box-shadow: 0 0 0 6px var(--ring);
+    border-color: transparent;
   }
 
+  /* buttons */
   .btn {
     @apply inline-flex items-center justify-center rounded-2xl text-sm font-medium transition
-           border shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-200;
+           border shadow-sm focus:outline-none;
   }
-
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-2xl text-sm font-medium transition
-           border shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-200
-           bg-gradient-to-br from-indigo-600 to-violet-600 text-white border-transparent
-           hover:opacity-95 active:opacity-90;
+    @apply text-white border-transparent;
+    background-image: linear-gradient(90deg, var(--brand-1), var(--brand-2));
   }
-
+  .btn-primary:hover {
+    opacity: 0.95;
+  }
   .btn-outline {
-    @apply inline-flex items-center justify-center rounded-2xl text-sm font-medium transition
-           border shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-200
-           bg-white text-gray-900 border-gray-200 hover:bg-gray-50;
+    @apply bg-white text-gray-900;
+    border-color: rgba(148, 163, 184, 0.45);
+  }
+  .btn-outline:hover {
+    background-color: rgba(15, 23, 42, 0.04);
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center rounded-2xl text-sm font-medium transition
-           border shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-200
-           bg-transparent border-transparent hover:bg-gray-100 shadow-none;
+    @apply bg-transparent border-transparent shadow-none;
   }
+}
+
+/* make shadcn/ui primitives feel softer without editing JSX */
+.card {
+  @apply rounded-2xl border bg-white/80 shadow-sm;
+}
+.card > header {
+  @apply pb-0;
+}
+label {
+  color: var(--muted-ink);
+  font-weight: 500;
+}
+
+/* nicer focus ring on all inputs/buttons/selects */
+input:focus,
+button:focus,
+[role="button"]:focus,
+select:focus {
+  outline: none;
+  box-shadow: 0 0 0 6px var(--ring);
+  border-color: transparent;
+}
+
+/* table rows – softer separators */
+table tr {
+  border-color: rgba(148, 163, 184, 0.35);
+}
+thead tr {
+  background-color: rgba(15, 23, 42, 0.04);
+}
+
+/* badge/pill (like your PWA chip) */
+.badge {
+  @apply rounded-full text-xs font-medium px-2 py-0.5 text-white;
+  background-image: linear-gradient(90deg, var(--brand-1), var(--brand-2));
 }
