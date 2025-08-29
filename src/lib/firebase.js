@@ -28,13 +28,13 @@ import { DEFAULT_CATEGORIES } from "@/lib/constants";
    Firebase init
 ---------------------------------------- */
 const firebaseConfig = {
-  apiKey: "AIzaSyDQs2iH0aFwB6Ii_Jpv1EU6JkNddpa12zc",
-  authDomain: "ancyexpensetracker.firebaseapp.com",
-  projectId: "ancyexpensetracker",
-  storageBucket: "ancyexpensetracker.firebasestorage.app",
-  messagingSenderId: "37602943977",
-  appId: "1:37602943977:web:82b5888edd0b1f79ebe178",
-  measurementId: "G-LJCZN39EN0",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
 const app = initializeApp(firebaseConfig);
