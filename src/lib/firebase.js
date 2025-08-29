@@ -27,14 +27,24 @@ import { DEFAULT_CATEGORIES } from "@/lib/constants";
 /* ---------------------------------------
    Firebase init
 ---------------------------------------- */
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+  apiKey:
+    import.meta.env.VITE_FIREBASE_API_KEY ||
+    "AIzaSyDQs2iH0aFwB6Ii_Jpv1EU6JkNddpa12zc",
+  authDomain:
+    import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ||
+    "ancyexpensetracker.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "ancyexpensetracker",
+  storageBucket:
+    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ||
+    "ancyexpensetracker.firebasestorage.app",
+  messagingSenderId:
+    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "37602943977",
+  appId:
+    import.meta.env.VITE_FIREBASE_APP_ID ||
+    "1:37602943977:web:82b5888edd0b1f79ebe178",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-LJCZN39EN0",
 };
 
 const app = initializeApp(firebaseConfig);
@@ -168,11 +178,27 @@ export async function signOutUser() {
 }
 
 export async function signUpWithEmail(email, password) {
-  return createUserWithEmailAndPassword(auth, email, password);
+  try {
+    console.log("Attempting to sign up with email:", email);
+    const result = await createUserWithEmailAndPassword(auth, email, password);
+    console.log("Sign up successful:", result.user.email);
+    return result;
+  } catch (error) {
+    console.error("Sign up error:", error);
+    throw error;
+  }
 }
 
 export async function signInWithEmail(email, password) {
-  return signInWithEmailAndPassword(auth, email, password);
+  try {
+    console.log("Attempting to sign in with email:", email);
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    console.log("Sign in successful:", result.user.email);
+    return result;
+  } catch (error) {
+    console.error("Sign in error:", error);
+    throw error;
+  }
 }
 
 /* ---------------------------------------
