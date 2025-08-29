@@ -178,27 +178,11 @@ export async function signOutUser() {
 }
 
 export async function signUpWithEmail(email, password) {
-  try {
-    console.log("Attempting to sign up with email:", email);
-    const result = await createUserWithEmailAndPassword(auth, email, password);
-    console.log("Sign up successful:", result.user.email);
-    return result;
-  } catch (error) {
-    console.error("Sign up error:", error);
-    throw error;
-  }
+  return createUserWithEmailAndPassword(auth, email, password);
 }
 
 export async function signInWithEmail(email, password) {
-  try {
-    console.log("Attempting to sign in with email:", email);
-    const result = await signInWithEmailAndPassword(auth, email, password);
-    console.log("Sign in successful:", result.user.email);
-    return result;
-  } catch (error) {
-    console.error("Sign in error:", error);
-    throw error;
-  }
+  return signInWithEmailAndPassword(auth, email, password);
 }
 
 /* ---------------------------------------
