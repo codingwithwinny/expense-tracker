@@ -23,3 +23,40 @@ export function buildCSV(rows) {
   };
   return rows.map((r) => r.map(esc).join(",")).join("\n");
 }
+
+// Enhanced period key generation
+export const periodKey = (startDate, endDate) => {
+  if (!startDate || !endDate) {
+    // Fallback to month key for backward compatibility
+    return monthKey();
+  }
+
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  // Create a unique key for the custom period
+  return `custom-${start.toISOString().slice(0, 10)}-${end
+    .toISOString()
+    .slice(0, 10)}`;
+};
+
+// Helper to check if a date falls within a period
+export const isDateInPeriod = (date, startDate, endDate) => {
+  const checkDate = new Date(date);
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  return checkDate >= start && checkDate <= end;
+};
+
+// Helper to get the current period key based on selection
+export const getCurrentPeriodKey = (selectedMonth, customDateRange) => {
+  if (
+    selectedMonth === "custom" &&
+    customDateRange.start &&
+    customDateRange.end
+  ) {
+    return periodKey(customDateRange.start, customDateRange.end);
+  }
+  return selectedMonth;
+};
