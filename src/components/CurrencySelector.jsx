@@ -1,5 +1,5 @@
 // src/components/CurrencySelector.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useCurrency } from "@/hooks/useCurrency.jsx";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,26 @@ import { Globe, Check } from "lucide-react";
 export default function CurrencySelector() {
   const { selectedCurrency, changeCurrency, supportedCurrencies } = useCurrency();
   const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isOpen]);
 
   const popularCurrencies = supportedCurrencies.filter(currency => 
     ['USD', 'EUR', 'GBP', 'INR', 'CAD', 'AUD', 'JPY'].includes(currency.code)
@@ -19,7 +39,7 @@ export default function CurrencySelector() {
   );
 
   return (
-    <div className="relative">
+    <div className="relative" ref={dropdownRef}>
       <Button
         variant="outline"
         size="sm"
@@ -32,8 +52,8 @@ export default function CurrencySelector() {
       </Button>
 
       {isOpen && (
-        <div className="absolute top-full right-0 mt-2 w-80 z-50">
-          <Card className="shadow-lg border">
+        <div className="absolute top-full left-0 sm:right-0 sm:left-auto mt-2 w-80 z-50 sm:w-80 max-w-[calc(100vw-2rem)]">
+          <Card className="shadow-lg border max-h-[70vh] overflow-y-auto">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium">Select Currency</CardTitle>
             </CardHeader>
@@ -41,7 +61,7 @@ export default function CurrencySelector() {
               {/* Popular Currencies */}
               <div>
                 <h4 className="text-xs font-medium text-gray-600 mb-2">Popular</h4>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {popularCurrencies.map((currency) => (
                     <Button
                       key={currency.code}
