@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import useAuth from "@/hooks/useAuth";
 import useMonthData from "@/hooks/useMonthData";
 import useDateSelection from "@/hooks/useDateSelection";
+import { useCurrency } from "@/hooks/useCurrency.jsx";
 import { fmt, monthKey, buildCSV, periodKey } from "@/lib/utils";
 import {
   DEFAULT_CATEGORIES,
@@ -16,6 +17,7 @@ import {
 
 import AuthButtons from "@/components/AuthButtons";
 import AuthPage from "@/components/AuthPage";
+import CurrencySelector from "@/components/CurrencySelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +69,9 @@ export default function ExpenseTracker() {
     customDateRange,
     setCustomDateRange,
   } = useDateSelection();
+
+  // Use currency hook
+  const { selectedCurrency } = useCurrency();
 
   // Add new goal form state
   const [newGoal, setNewGoal] = useState({
@@ -258,8 +263,14 @@ export default function ExpenseTracker() {
     }
 
     // Validate amount
-    if (amt > 10000000) {
-      alert("Amount cannot exceed ₹10,000,000");
+    if (amt > selectedCurrency.maxAmount) {
+      alert(
+        `Amount cannot exceed ${fmt(
+          selectedCurrency.maxAmount,
+          selectedCurrency.code,
+          selectedCurrency.locale
+        )}`
+      );
       return;
     }
 
@@ -294,8 +305,14 @@ export default function ExpenseTracker() {
 
   function setBudget(category, value) {
     const amt = Number(value);
-    if (amt > 10000000) {
-      alert("Budget cannot exceed ₹10,000,000");
+    if (amt > selectedCurrency.maxAmount) {
+      alert(
+        `Budget cannot exceed ${fmt(
+          selectedCurrency.maxAmount,
+          selectedCurrency.code,
+          selectedCurrency.locale
+        )}`
+      );
       return;
     }
     setState((s) => ({
@@ -305,7 +322,12 @@ export default function ExpenseTracker() {
   }
 
   function exportCSV() {
-    const header = ["Date", "Category", "Description", "Amount (INR)"];
+    const header = [
+      "Date",
+      "Category",
+      "Description",
+      `Amount (${selectedCurrency.code})`,
+    ];
     const rows = (expenses || [])
       .slice()
       .reverse()
@@ -531,6 +553,8 @@ export default function ExpenseTracker() {
               )}
             </div>
 
+            <CurrencySelector />
+
             <Button
               variant="outline"
               onClick={exportCSV}
@@ -565,9 +589,30 @@ export default function ExpenseTracker() {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-                  <Stat label="Income" value={fmt(totals.income)} />
-                  <Stat label="Expenses" value={fmt(totals.totalExp)} />
-                  <Stat label="Remaining" value={fmt(totals.remaining)} />
+                  <Stat
+                    label="Income"
+                    value={fmt(
+                      totals.income,
+                      selectedCurrency.code,
+                      selectedCurrency.locale
+                    )}
+                  />
+                  <Stat
+                    label="Expenses"
+                    value={fmt(
+                      totals.totalExp,
+                      selectedCurrency.code,
+                      selectedCurrency.locale
+                    )}
+                  />
+                  <Stat
+                    label="Remaining"
+                    value={fmt(
+                      totals.remaining,
+                      selectedCurrency.code,
+                      selectedCurrency.locale
+                    )}
+                  />
                   <Stat label="Budget Used" value={`${totals.util}%`} />
                 </div>
 
@@ -642,7 +687,7 @@ export default function ExpenseTracker() {
                       />
                     </div>
                     <div>
-                      <Label>Amount (INR)</Label>
+                      <Label>Amount ({selectedCurrency.code})</Label>
                       <Input
                         inputMode="numeric"
                         placeholder="e.g., 75000"
@@ -727,7 +772,7 @@ export default function ExpenseTracker() {
                     />
                   </div>
                   <div>
-                    <Label>Target Amount (INR)</Label>
+                    <Label>Target Amount ({selectedCurrency.code})</Label>
                     <Input
                       inputMode="numeric"
                       placeholder="e.g., 100000"
@@ -742,7 +787,7 @@ export default function ExpenseTracker() {
                     />
                   </div>
                   <div>
-                    <Label>Current Amount (INR)</Label>
+                    <Label>Current Amount ({selectedCurrency.code})</Label>
                     <Input
                       inputMode="numeric"
                       placeholder="e.g., 25000"
@@ -807,6 +852,7 @@ export default function ExpenseTracker() {
                         goal={goal}
                         onUpdate={updateSavingsGoal}
                         onDelete={removeSavingsGoal}
+                        selectedCurrency={selectedCurrency}
                       />
                     ))}
                   </div>
@@ -1079,7 +1125,7 @@ export default function ExpenseTracker() {
                         <div className="col-span-2">
                           <Input
                             inputMode="numeric"
-                            placeholder="Budget (INR)"
+                            placeholder={`Budget (${selectedCurrency.code})`}
                             value={catBudgets[c] ?? ""}
                             onChange={(e) =>
                               setBudget(
@@ -1223,15 +1269,36 @@ function TipsDialog() {
           <DialogDescription asChild>
             <div className="space-y-3 text-gray-600">
               <p>
-                1) Select the month at the top-right. 2) Add income sources
-                (salary, freelance, etc.). 3) (Optional) Set category budgets.
-                4) Add expenses with date, category, and amount.
+                <strong>🌍 Multi-Currency Support:</strong> Click the globe icon
+                (🌍) to select your preferred currency. All amounts will
+                automatically format in your chosen currency.
               </p>
               <p>
-                Your data is saved to your browser and (if signed in) to your
-                account. Use <strong>Export Expenses</strong> to download a CSV.
+                <strong>📅 Date Selection:</strong> Choose from preset months or
+                select "Custom Period" for any date range. Your selection will
+                be remembered when you return.
               </p>
-              <p>Tip: Budgets show over/under for each category at a glance.</p>
+              <p>
+                <strong>💰 Getting Started:</strong> 1) Select your currency and
+                time period. 2) Add income sources (salary, freelance, etc.). 3)
+                (Optional) Set category budgets. 4) Add expenses with date,
+                category, and amount.
+              </p>
+              <p>
+                <strong>🎯 Savings Goals:</strong> Set financial targets with
+                target dates and track your progress. Add or withdraw money to
+                stay on track.
+              </p>
+              <p>
+                <strong>💾 Data Persistence:</strong> Your data is saved to your
+                browser and (if signed in) to your account. Use{" "}
+                <strong>Export Expenses</strong> to download a CSV.
+              </p>
+              <p>
+                <strong>💡 Tips:</strong> Budgets show over/under for each
+                category at a glance. Your currency and date preferences are
+                automatically saved.
+              </p>
             </div>
           </DialogDescription>
         </DialogHeader>
@@ -1240,7 +1307,7 @@ function TipsDialog() {
   );
 }
 
-function SavingsGoalCard({ goal, onUpdate, onDelete }) {
+function SavingsGoalCard({ goal, onUpdate, onDelete, selectedCurrency }) {
   const progress = (goal.currentAmount / goal.targetAmount) * 100;
   const daysRemaining = Math.ceil(
     (new Date(goal.targetDate) - new Date()) / (1000 * 60 * 60 * 24)
@@ -1312,8 +1379,20 @@ function SavingsGoalCard({ goal, onUpdate, onDelete }) {
       {/* Progress Bar */}
       <div className="mb-3">
         <div className="flex justify-between text-sm text-gray-600 mb-1">
-          <span>₹{goal.currentAmount.toLocaleString("en-IN")}</span>
-          <span>₹{goal.targetAmount.toLocaleString("en-IN")}</span>
+          <span>
+            {fmt(
+              goal.currentAmount,
+              selectedCurrency.code,
+              selectedCurrency.locale
+            )}
+          </span>
+          <span>
+            {fmt(
+              goal.targetAmount,
+              selectedCurrency.code,
+              selectedCurrency.locale
+            )}
+          </span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
           <div
@@ -1335,7 +1414,7 @@ function SavingsGoalCard({ goal, onUpdate, onDelete }) {
           size="sm"
           onClick={() => {
             const amount = prompt(
-              `How much did you add to "${goal.name}"? (INR)`
+              `How much did you add to "${goal.name}"? (${selectedCurrency.code})`
             );
             if (amount && !isNaN(Number(amount))) {
               onUpdate(goal.id, {
@@ -1356,7 +1435,7 @@ function SavingsGoalCard({ goal, onUpdate, onDelete }) {
           size="sm"
           onClick={() => {
             const amount = prompt(
-              `How much did you withdraw from "${goal.name}"? (INR)`
+              `How much did you withdraw from "${goal.name}"? (${selectedCurrency.code})`
             );
             if (amount && !isNaN(Number(amount))) {
               onUpdate(goal.id, {

@@ -1,12 +1,36 @@
-// INR currency format
-export const fmt = (n) =>
-  isNaN(n)
-    ? "₹0"
-    : Number(n).toLocaleString("en-IN", {
-        style: "currency",
-        currency: "INR",
-        maximumFractionDigits: 0,
-      });
+// Multi-currency format function
+export const fmt = (n, currency = 'INR', locale = 'en-IN') => {
+  if (isNaN(n)) {
+    // Return default symbol for the currency
+    const symbols = {
+      'USD': '$0',
+      'EUR': '€0',
+      'GBP': '£0',
+      'INR': '₹0',
+      'CAD': 'C$0',
+      'AUD': 'A$0',
+      'JPY': '¥0',
+      'CNY': '¥0',
+      'SGD': 'S$0',
+      'AED': 'د.إ0',
+      'SAR': 'ر.س0',
+      'BRL': 'R$0',
+      'MXN': '$0',
+      'KRW': '₩0',
+      'THB': '฿0'
+    };
+    return symbols[currency] || '₹0';
+  }
+
+  return Number(n).toLocaleString(locale, {
+    style: "currency",
+    currency: currency,
+    maximumFractionDigits: currency === 'JPY' || currency === 'KRW' ? 0 : 2,
+  });
+};
+
+// Legacy INR format for backward compatibility
+export const fmtINR = (n) => fmt(n, 'INR', 'en-IN');
 
 export const monthKey = (d) => {
   const dt = d ? new Date(d) : new Date();

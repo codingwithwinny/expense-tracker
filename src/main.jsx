@@ -3,6 +3,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.jsx";
+import { CurrencyProvider } from "@/hooks/useCurrency.jsx";
 
 import { handleRedirectResultOnce } from "@/lib/firebase";
 
@@ -27,7 +28,9 @@ if ("serviceWorker" in navigator) {
   } finally {
     createRoot(document.getElementById("root")).render(
       <React.StrictMode>
-        <App />
+        <CurrencyProvider>
+          <App />
+        </CurrencyProvider>
       </React.StrictMode>
     );
   }
