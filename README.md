@@ -8,7 +8,7 @@
 ![Vite](https://img.shields.io/badge/Vite-7.1.3-purple?style=for-the-badge&logo=vite)
 ![Tailwind](https://img.shields.io/badge/Tailwind-4.1.12-38B2AC?style=for-the-badge&logo=tailwind-css)
 
-**A modern, feature-rich expense tracking Progressive Web App (PWA) with Savings Goals, Enhanced Analytics, and Custom Salary Cycles.**
+**A modern, feature-rich expense tracking Progressive Web App (PWA) with Multi-Currency Support, Savings Goals, Enhanced Analytics, and Custom Salary Cycles.**
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-View%20App-brightgreen?style=for-the-badge&logo=google-chrome)](https://ancyexpensetracker.web.app)
 [![Custom Domain](https://img.shields.io/badge/Custom%20Domain-app.ancy.co.in-blue?style=for-the-badge)](https://app-ancy-co-in.web.app)
@@ -22,17 +22,18 @@
 
 <div align="center">
 
-| 🎯 **Phase 1: Savings Goals** | 📊 **Phase 2: Enhanced Analytics** | 🔄 **Custom Salary Cycles** |
-|-------------------------------|-----------------------------------|------------------------------|
-| • Smart Goal Tracking | • Daily Spending Trends | • Flexible Periods |
-| • Progress Visualization | • Category Performance | • 15th-14th Cycles |
-| • Priority System | • Key Financial Insights | • Period Comparison |
-| • Quick Actions | • Change Indicators | • Data Separation |
+| 🌍 **Multi-Currency** | 🎯 **Savings Goals** | 📊 **Enhanced Analytics** | 🔄 **Custom Periods** |
+|----------------------|---------------------|---------------------------|----------------------|
+| • 15 Major Currencies | • Smart Goal Tracking | • Daily Spending Trends | • Flexible Periods |
+| • Auto Formatting | • Progress Visualization | • Category Performance | • Custom Date Ranges |
+| • Persistent Settings | • Priority System | • Key Financial Insights | • Period Comparison |
+| • Mobile Optimized | • Quick Actions | • Change Indicators | • Data Separation |
 
 </div>
 
 ### 🚀 **Core Features**
 
+- **🌍 Multi-Currency Support** - 15 major currencies with automatic formatting
 - **💰 Expense Tracking** - Add, edit, delete expenses with categories
 - **💵 Income Management** - Track multiple income sources
 - **📊 Smart Analytics** - Beautiful charts and spending insights
@@ -45,7 +46,31 @@
 
 ---
 
-## 🎯 **Phase 1: Savings Goals Management**
+## 🌍 **Multi-Currency Support**
+
+### ✨ **Global Currency Support**
+- **15 Major Currencies**: USD, EUR, GBP, INR, CAD, AUD, JPY, CNY, SGD, AED, SAR, BRL, MXN, KRW, THB
+- **Proper Symbols**: Each currency displays with correct symbols (₹, $, €, £, ¥, etc.)
+- **Locale-Aware Formatting**: Numbers format according to each currency's locale
+- **Currency-Specific Limits**: Different maximum amounts for different currencies
+
+### 🎨 **User Experience**
+- **Globe Icon Selector**: Easy currency selection with visual flag indicators
+- **Popular Currencies**: Quick selection for most common currencies (USD, EUR, GBP, INR, etc.)
+- **Full Currency List**: Complete dropdown with all supported currencies
+- **Persistent Preferences**: Currency choice saved across sessions
+- **Mobile Optimized**: Responsive design that works perfectly on all devices
+
+### 🔧 **Smart Features**
+- **Automatic Formatting**: All amounts update when currency changes
+- **Currency-Aware Validation**: Error messages use selected currency
+- **Export Support**: CSV exports include selected currency information
+- **Seamless Switching**: Change currency without losing any data
+- **Professional Formatting**: Proper international number formatting
+
+---
+
+## 🎯 **Savings Goals Management**
 
 ### ✨ **Smart Goal Tracking**
 - **Goal Creation**: Set financial goals with name, target amount, current amount, target date, and priority
@@ -209,13 +234,17 @@ src/
 │   │   └── select.jsx
 │   ├── AuthButtons.jsx # Authentication components
 │   ├── AuthPage.jsx    # Login/Register page
+│   ├── CurrencySelector.jsx # Multi-currency selector
 │   └── charts/         # Chart components
 ├── hooks/              # Custom React hooks
 │   ├── useAuth.js      # Authentication hook
-│   └── useMonthData.js # Data management hook
+│   ├── useMonthData.js # Data management hook
+│   ├── useDateSelection.js # Date persistence hook
+│   └── useCurrency.jsx # Multi-currency management hook
 ├── lib/                # Utilities and configurations
 │   ├── firebase.js     # Firebase configuration
 │   ├── constants.js    # App constants
+│   ├── currencies.js   # Currency configurations
 │   └── utils.js        # Utility functions
 └── assets/             # Static assets
 ```
@@ -228,6 +257,13 @@ src/
 - **Google Sign-in** - Secure authentication with Google
 - **User Isolation** - Each user's data is completely isolated
 - **Session Management** - Automatic login state management
+
+### 🌍 Multi-Currency Support
+- **15 Major Currencies** - USD, EUR, GBP, INR, CAD, AUD, JPY, CNY, SGD, AED, SAR, BRL, MXN, KRW, THB
+- **Automatic Formatting** - Proper symbols and locale-specific number formatting
+- **Persistent Preferences** - Currency choice saved across sessions
+- **Mobile Optimized** - Responsive currency selector with touch support
+- **Export Integration** - CSV exports include selected currency
 
 ### 💰 Expense Management
 - **Add/Edit/Delete** - Full CRUD operations for expenses
@@ -310,11 +346,14 @@ We welcome contributions! Please follow these steps:
 ## 🔄 Version History
 
 ### v2.0.0 - Major Update (Current)
+- 🌍 **Multi-Currency Support** - 15 major currencies with automatic formatting
 - ✨ **Savings Goals Management** - Complete goal tracking system
 - 📊 **Enhanced Charts & Analytics** - Advanced visualizations
 - 🔄 **Custom Salary Cycles** - Flexible period management
+- 📅 **Persistent Date Selection** - Custom date ranges with memory
 - 🎨 **Improved UI/UX** - Smooth animations and better design
 - 📱 **Enhanced PWA** - Better offline support and performance
+- 🔧 **Firebase Security** - Proper Firestore security rules
 
 ### v1.0.0 - Initial Release
 - 💰 Basic expense tracking
