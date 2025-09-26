@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 
 import useAuth from "@/hooks/useAuth";
 import useMonthData from "@/hooks/useMonthData";
+import useDateSelection from "@/hooks/useDateSelection";
 import { fmt, monthKey, buildCSV, periodKey } from "@/lib/utils";
 import {
   DEFAULT_CATEGORIES,
@@ -59,15 +60,13 @@ function colorFor(name) {
 }
 
 export default function ExpenseTracker() {
-  const [selectedMonth, setSelectedMonth] = useState(monthKey());
-  const [customDateRange, setCustomDateRange] = useState({
-    start: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-      .toISOString()
-      .slice(0, 10),
-    end: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)
-      .toISOString()
-      .slice(0, 10),
-  });
+  // Use persistent date selection hook
+  const {
+    selectedMonth,
+    setSelectedMonth,
+    customDateRange,
+    setCustomDateRange,
+  } = useDateSelection();
 
   // Add new goal form state
   const [newGoal, setNewGoal] = useState({
