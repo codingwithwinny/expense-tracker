@@ -56,27 +56,22 @@ const hoverFx = {
   transition: { type: "spring", stiffness: 300, damping: 20, mass: 0.5 },
 };
 
-/* Stable color per category (chart cells) */
 function colorFor(name) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return COLORS[h % COLORS.length];
 }
 
-/* ─────────────────────────────────────────────
-   Toast notification system
-───────────────────────────────────────────── */
 function useToast() {
   const [toasts, setToasts] = useState([]);
-
   const addToast = useCallback((message, type = "error") => {
     const id = crypto.randomUUID();
     setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3500);
+    setTimeout(
+      () => setToasts((prev) => prev.filter((t) => t.id !== id)),
+      3500,
+    );
   }, []);
-
   return { toasts, addToast };
 }
 
@@ -91,12 +86,11 @@ function ToastContainer({ toasts }) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 60 }}
             transition={{ duration: 0.22 }}
-            className={`pointer-events-auto flex items-center gap-2 rounded-xl border px-4 py-3 text-sm shadow-lg
-              ${
-                t.type === "error"
-                  ? "bg-red-50 border-red-200 text-red-800"
-                  : "bg-green-50 border-green-200 text-green-800"
-              }`}
+            className={`pointer-events-auto flex items-center gap-2 rounded-xl border px-4 py-3 text-sm shadow-lg ${
+              t.type === "error"
+                ? "bg-red-50 border-red-200 text-red-800"
+                : "bg-green-50 border-green-200 text-green-800"
+            }`}
           >
             {t.type === "error" ? (
               <AlertCircle className="h-4 w-4 shrink-0" />
@@ -111,9 +105,6 @@ function ToastContainer({ toasts }) {
   );
 }
 
-/* ─────────────────────────────────────────────
-   Confirm dialog (replaces confirm())
-───────────────────────────────────────────── */
 function ConfirmDialog({
   open,
   title,
@@ -154,9 +145,6 @@ function ConfirmDialog({
   );
 }
 
-/* ─────────────────────────────────────────────
-   Amount input dialog (replaces prompt())
-───────────────────────────────────────────── */
 function AmountInputDialog({
   open,
   title,
@@ -168,7 +156,6 @@ function AmountInputDialog({
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
 
-  // Reset state when dialog opens
   useEffect(() => {
     if (open) {
       setValue("");
@@ -231,9 +218,6 @@ function AmountInputDialog({
   );
 }
 
-/* ─────────────────────────────────────────────
-   Inline field error helper
-───────────────────────────────────────────── */
 function FieldError({ message }) {
   if (!message) return null;
   return (
@@ -244,9 +228,6 @@ function FieldError({ message }) {
   );
 }
 
-/* ─────────────────────────────────────────────
-   Main component
-───────────────────────────────────────────── */
 export default function ExpenseTracker() {
   const {
     selectedMonth,
@@ -258,23 +239,18 @@ export default function ExpenseTracker() {
   const { user, loading } = useAuth();
   const { toasts, addToast } = useToast();
 
-  // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
     title: "",
     description: "",
     onConfirm: null,
   });
-
-  // Amount input dialog state
   const [amountDialog, setAmountDialog] = useState({
     open: false,
     title: "",
     description: "",
     onConfirm: null,
   });
-
-  // New goal form
   const [newGoal, setNewGoal] = useState({
     name: "",
     targetAmount: "",
@@ -282,14 +258,8 @@ export default function ExpenseTracker() {
     targetDate: "",
     priority: "medium",
   });
-
-  // Income form errors
   const [sourceErrors, setSourceErrors] = useState({});
-
-  // Expense form errors
   const [expErrors, setExpErrors] = useState({});
-
-  // Goal form errors
   const [goalErrors, setGoalErrors] = useState({});
 
   useEffect(() => {
@@ -301,7 +271,6 @@ export default function ExpenseTracker() {
     return () => window.removeEventListener("auth:error", handleAuthError);
   }, [addToast]);
 
-  /* --------------- Month options --------------- */
   const monthOptions = useMemo(() => {
     const list = [{ key: "custom", label: "Custom Period", isCustom: true }];
     const now = new Date();
@@ -329,7 +298,6 @@ export default function ExpenseTracker() {
   }, [selectedMonth, customDateRange]);
 
   const { state, setState, totals } = useMonthData(user, currentPeriodKey);
-
   const {
     incomeSources = [],
     expenses = [],
@@ -361,7 +329,6 @@ export default function ExpenseTracker() {
 
   if (!user) return <AuthPage />;
 
-  /* ── Helpers ── */
   function openConfirm({ title, description, onConfirm }) {
     setConfirmDialog({ open: true, title, description, onConfirm });
   }
@@ -385,7 +352,6 @@ export default function ExpenseTracker() {
     });
   }
 
-  /* ── Income actions ── */
   function addIncomeSource() {
     const errors = {};
     const amt = Number(source.amount);
@@ -424,7 +390,6 @@ export default function ExpenseTracker() {
     });
   }
 
-  /* ── Expense actions ── */
   function addExpense() {
     const errors = {};
     const amt = Number(exp.amount);
@@ -513,7 +478,6 @@ export default function ExpenseTracker() {
     addToast("CSV exported!", "success");
   }
 
-  /* ── Category actions ── */
   function validateCategoryName(nameRaw) {
     const name = (nameRaw || "").trim();
     if (!name) return "Enter a category name.";
@@ -573,7 +537,6 @@ export default function ExpenseTracker() {
     });
   }
 
-  /* ── Savings goal actions ── */
   function addSavingsGoal() {
     const errors = {};
     const targetAmt = Number(newGoal.targetAmount);
@@ -676,13 +639,9 @@ export default function ExpenseTracker() {
     });
   }
 
-  /* ── UI ── */
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-indigo-50 via-white to-sky-100 p-6">
-      {/* Toast notifications */}
       <ToastContainer toasts={toasts} />
-
-      {/* Confirm dialog */}
       <ConfirmDialog
         open={confirmDialog.open}
         title={confirmDialog.title}
@@ -690,8 +649,6 @@ export default function ExpenseTracker() {
         onConfirm={confirmDialog.onConfirm}
         onCancel={closeConfirm}
       />
-
-      {/* Amount input dialog */}
       <AmountInputDialog
         open={amountDialog.open}
         title={amountDialog.title}
@@ -717,7 +674,6 @@ export default function ExpenseTracker() {
               simple way to manage money smartly.
             </p>
           </div>
-
           <div className="flex items-center gap-3 flex-shrink-0 flex-wrap md:flex-nowrap">
             <div className="flex flex-col gap-2">
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
@@ -732,7 +688,6 @@ export default function ExpenseTracker() {
                   ))}
                 </SelectContent>
               </Select>
-
               {selectedMonth === "custom" && (
                 <div className="flex items-center gap-2">
                   <div>
@@ -772,9 +727,7 @@ export default function ExpenseTracker() {
                 </div>
               )}
             </div>
-
             <CurrencySelector />
-
             <Button
               variant="outline"
               onClick={exportCSV}
@@ -783,7 +736,6 @@ export default function ExpenseTracker() {
               <Download className="h-4 w-4" />
               Export Expenses
             </Button>
-
             <div className="h-10 md:h-9">
               <AuthButtons className="h-full" />
             </div>
@@ -834,7 +786,6 @@ export default function ExpenseTracker() {
                   />
                   <Stat label="Budget Used" value={`${totals.util}%`} />
                 </div>
-
                 {savingsGoals.length > 0 && (
                   <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
                     <h4 className="font-medium text-green-800 mb-2">
@@ -866,7 +817,6 @@ export default function ExpenseTracker() {
                     </div>
                   </div>
                 )}
-
                 <div className="mt-4">
                   <ProgressBar percent={totals.util} />
                   <p className="mt-1 text-xs text-gray-500">
@@ -927,14 +877,12 @@ export default function ExpenseTracker() {
                       <FieldError message={sourceErrors.amount} />
                     </div>
                   </div>
-
                   <Button
                     onClick={addIncomeSource}
                     className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white border-transparent hover:opacity-95"
                   >
                     Add Source
                   </Button>
-
                   {incomeSources.length === 0 ? (
                     <p className="text-xs text-gray-500">
                       No income sources added yet.
@@ -985,7 +933,6 @@ export default function ExpenseTracker() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 gap-3">
-                {/* Add New Goal Form */}
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-6 md:items-start">
                   <div>
                     <Label>Goal Name</Label>
@@ -1078,7 +1025,6 @@ export default function ExpenseTracker() {
                     </Button>
                   </div>
                 </div>
-
                 {savingsGoals.length === 0 ? (
                   <p className="text-xs text-gray-500 text-center py-4">
                     No savings goals set yet. Start by adding your first goal
@@ -1136,7 +1082,6 @@ export default function ExpenseTracker() {
                     />
                     <FieldError message={expErrors.date} />
                   </div>
-
                   <div className="md:col-span-2">
                     <Label>Category</Label>
                     <Select
@@ -1162,7 +1107,6 @@ export default function ExpenseTracker() {
                     </Select>
                     <FieldError message={expErrors.category} />
                   </div>
-
                   <div className="md:col-span-2">
                     <Label htmlFor="amount">Amount</Label>
                     <Input
@@ -1182,7 +1126,6 @@ export default function ExpenseTracker() {
                     />
                     <FieldError message={expErrors.amount} />
                   </div>
-
                   <div className="md:col-span-5">
                     <Label htmlFor="desc">Description (optional)</Label>
                     <Input
@@ -1195,7 +1138,6 @@ export default function ExpenseTracker() {
                       }
                     />
                   </div>
-
                   <div className="md:col-span-1 flex items-end">
                     <Button
                       className="w-full h-10 md:h-9 bg-gradient-to-r from-brand-start to-brand-end text-white border-transparent hover:opacity-95"
@@ -1307,6 +1249,7 @@ export default function ExpenseTracker() {
 
           {/* Right column */}
           <div className="space-y-6">
+            {/* ── By Category with legend ── */}
             <motion.div
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1319,39 +1262,91 @@ export default function ExpenseTracker() {
                 </CardHeader>
                 <CardContent>
                   {totals.byCat.length === 0 ? (
-                    <p className="text-sm text-gray-500">
-                      Add expenses to see the breakdown.
-                    </p>
-                  ) : (
-                    <div className="h-72">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={totals.byCat}
-                            dataKey="value"
-                            nameKey="name"
-                            innerRadius={60}
-                            outerRadius={90}
-                          >
-                            {totals.byCat.map((entry) => (
-                              <Cell
-                                key={entry.name}
-                                fill={colorFor(entry.name)}
-                              />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            formatter={(v) => fmt(Number(v))}
-                            contentStyle={{ borderRadius: 12 }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
+                    <div className="flex flex-col items-center justify-center py-10 text-center">
+                      <div className="text-4xl mb-2">📊</div>
+                      <p className="text-sm text-gray-500">
+                        Add expenses to see the breakdown.
+                      </p>
                     </div>
+                  ) : (
+                    <>
+                      <div className="h-52">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={totals.byCat}
+                              dataKey="value"
+                              nameKey="name"
+                              innerRadius={52}
+                              outerRadius={82}
+                            >
+                              {totals.byCat.map((entry) => (
+                                <Cell
+                                  key={entry.name}
+                                  fill={colorFor(entry.name)}
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              formatter={(v) =>
+                                fmt(
+                                  Number(v),
+                                  selectedCurrency.code,
+                                  selectedCurrency.locale,
+                                )
+                              }
+                              contentStyle={{ borderRadius: 12 }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Legend — only categories with spending */}
+                      <div className="mt-3 space-y-2">
+                        {totals.byCat.map((entry) => {
+                          const pct =
+                            totals.totalExp > 0
+                              ? ((entry.value / totals.totalExp) * 100).toFixed(
+                                  1,
+                                )
+                              : "0.0";
+                          return (
+                            <div
+                              key={entry.name}
+                              className="flex items-center justify-between text-xs"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span
+                                  className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+                                  style={{ background: colorFor(entry.name) }}
+                                />
+                                <span className="text-gray-700 truncate">
+                                  {entry.name}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0 ml-2 text-gray-500">
+                                <span>
+                                  {fmt(
+                                    entry.value,
+                                    selectedCurrency.code,
+                                    selectedCurrency.locale,
+                                  )}
+                                </span>
+                                <span className="w-9 text-right font-medium text-gray-700">
+                                  {pct}%
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
                   )}
                 </CardContent>
               </Card>
             </motion.div>
 
+            {/* ── Category Budgets with progress bars ── */}
             <motion.div
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1363,44 +1358,95 @@ export default function ExpenseTracker() {
                   <CardTitle className="flex items-center gap-2 text-indigo-700">
                     <Target className="h-5 w-5" />
                     Category Budgets
+                    {categories.some((c) => {
+                      const spent =
+                        totals.byCat.find((x) => x.name === c)?.value || 0;
+                      const bud = Number(catBudgets[c]) || 0;
+                      return bud > 0 && spent > bud;
+                    }) && (
+                      <span className="ml-auto text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-600 border border-red-200">
+                        Over budget
+                      </span>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {categories.map((c) => {
                       const spent =
                         totals.byCat.find((x) => x.name === c)?.value || 0;
                       const bud = Number(catBudgets[c]) || 0;
                       const diff = bud - spent;
                       const isOver = bud > 0 && diff < 0;
+                      const pct =
+                        bud > 0 ? Math.min((spent / bud) * 100, 100) : 0;
                       return (
-                        <div
-                          key={c}
-                          className="grid grid-cols-5 items-center gap-2"
-                        >
-                          <div className="col-span-2 text-sm">{c}</div>
-                          <div className="col-span-2">
-                            <Input
-                              inputMode="numeric"
-                              placeholder={`Budget (${selectedCurrency.code})`}
-                              value={catBudgets[c] ?? ""}
-                              onChange={(e) =>
-                                setBudget(
-                                  c,
-                                  e.target.value.replace(/[^0-9]/g, ""),
-                                )
-                              }
+                        <div key={c} className="space-y-1">
+                          {/* Name + status */}
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="inline-block h-2 w-2 rounded-full shrink-0"
+                              style={{ background: colorFor(c) }}
                             />
+                            <span className="flex-1 text-sm font-medium text-gray-700">
+                              {c}
+                            </span>
+                            {isOver && (
+                              <span className="text-xs font-medium text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-full">
+                                {fmt(
+                                  Math.abs(diff),
+                                  selectedCurrency.code,
+                                  selectedCurrency.locale,
+                                )}{" "}
+                                over
+                              </span>
+                            )}
+                            {!isOver && bud > 0 && (
+                              <span className="text-xs text-gray-400">
+                                {fmt(
+                                  diff,
+                                  selectedCurrency.code,
+                                  selectedCurrency.locale,
+                                )}{" "}
+                                left
+                              </span>
+                            )}
                           </div>
-                          <div
-                            className={`text-right text-xs font-medium ${isOver ? "text-red-600" : "text-gray-500"}`}
-                          >
-                            {bud > 0
-                              ? diff >= 0
-                                ? `${fmt(diff)} left`
-                                : `${fmt(Math.abs(diff))} over`
-                              : ""}
+                          {/* Input + spent */}
+                          <div className="grid grid-cols-5 items-center gap-2">
+                            <div className="col-span-3">
+                              <Input
+                                inputMode="numeric"
+                                placeholder={`Budget (${selectedCurrency.code})`}
+                                value={catBudgets[c] ?? ""}
+                                onChange={(e) =>
+                                  setBudget(
+                                    c,
+                                    e.target.value.replace(/[^0-9]/g, ""),
+                                  )
+                                }
+                                className={
+                                  isOver
+                                    ? "border-red-300 focus:border-red-400"
+                                    : ""
+                                }
+                              />
+                            </div>
+                            <div className="col-span-2 text-xs text-gray-400 text-right">
+                              {bud > 0
+                                ? `${fmt(spent, selectedCurrency.code, selectedCurrency.locale)} spent`
+                                : "no budget set"}
+                            </div>
                           </div>
+                          {/* Progress bar */}
+                          {bud > 0 && (
+                            <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                              <div
+                                className={`h-1.5 rounded-full transition-all duration-500 ${isOver ? "bg-red-500" : pct > 80 ? "bg-orange-400" : "bg-indigo-500"}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1447,7 +1493,6 @@ export default function ExpenseTracker() {
                       You can have up to {MAX_CATEGORIES} categories.
                     </p>
                   )}
-
                   <div className="mt-3 flex flex-wrap gap-2">
                     {categories.map((c) => (
                       <span
@@ -1485,7 +1530,6 @@ export default function ExpenseTracker() {
   );
 }
 
-/* ── Small reusable components ── */
 function Stat({ label, value }) {
   return (
     <div className="rounded-2xl border bg-white p-4 shadow-sm">
@@ -1544,9 +1588,9 @@ function TipsDialog() {
                 <strong>Export Expenses</strong> to download a CSV.
               </p>
               <p>
-                <strong>💡 Tips:</strong> Red "over" text in budgets means
-                you've exceeded that category's limit. Your currency and date
-                preferences are automatically saved.
+                <strong>💡 Tips:</strong> Budget bars turn orange at 80% and red
+                when over limit. Your currency and date preferences are
+                automatically saved.
               </p>
             </div>
           </DialogDescription>
@@ -1556,7 +1600,6 @@ function TipsDialog() {
   );
 }
 
-// SavingsGoalCard now receives callbacks instead of doing prompt/confirm itself
 function SavingsGoalCard({
   goal,
   onAddMoney,
@@ -1628,7 +1671,6 @@ function SavingsGoalCard({
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
-
       <div className="mb-3">
         <div className="flex justify-between text-sm text-gray-600 mb-1">
           <span>
@@ -1656,7 +1698,6 @@ function SavingsGoalCard({
           {progress.toFixed(1)}% complete
         </div>
       </div>
-
       <div className="flex gap-2">
         <Button
           variant="outline"
