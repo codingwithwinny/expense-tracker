@@ -1,6 +1,5 @@
 // src/App.jsx
 import React, { useMemo, useState, useEffect, useCallback } from "react";
-// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from "framer-motion";
 
 import useAuth from "@/hooks/useAuth";
@@ -18,7 +17,6 @@ import {
 import AuthButtons from "@/components/AuthButtons";
 import AuthPage from "@/components/AuthPage";
 import CurrencySelector from "@/components/CurrencySelector";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,30 +45,40 @@ import {
   X,
   AlertCircle,
   CheckCircle2,
+  TrendingUp,
+  PiggyBank,
+  LayoutDashboard,
+  HelpCircle,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
-const hoverFx = {
-  whileHover: { y: -3, scale: 1.01 },
-  whileTap: { scale: 0.997 },
-  transition: { type: "spring", stiffness: 300, damping: 20, mass: 0.5 },
-};
-
+/* ── color helper ── */
 function colorFor(name) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return COLORS[h % COLORS.length];
 }
 
+/* ── animation presets ── */
+const fadeUp = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.35, ease: "easeOut" },
+};
+const stagger = (i) => ({
+  ...fadeUp,
+  transition: { ...fadeUp.transition, delay: i * 0.07 },
+});
+
+/* ─────────────────────────────────────────────
+   Toast system
+───────────────────────────────────────────── */
 function useToast() {
   const [toasts, setToasts] = useState([]);
   const addToast = useCallback((message, type = "error") => {
     const id = crypto.randomUUID();
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(
-      () => setToasts((prev) => prev.filter((t) => t.id !== id)),
-      3500,
-    );
+    setToasts((p) => [...p, { id, message, type }]);
+    setTimeout(() => setToasts((p) => p.filter((t) => t.id !== id)), 3500);
   }, []);
   return { toasts, addToast };
 }
@@ -86,11 +94,8 @@ function ToastContainer({ toasts }) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 60 }}
             transition={{ duration: 0.22 }}
-            className={`pointer-events-auto flex items-center gap-2 rounded-xl border px-4 py-3 text-sm shadow-lg ${
-              t.type === "error"
-                ? "bg-red-50 border-red-200 text-red-800"
-                : "bg-green-50 border-green-200 text-green-800"
-            }`}
+            className={`pointer-events-auto flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm shadow-xl backdrop-blur-sm
+              ${t.type === "error" ? "bg-red-50/90 border-red-200 text-red-800" : "bg-green-50/90 border-green-200 text-green-800"}`}
           >
             {t.type === "error" ? (
               <AlertCircle className="h-4 w-4 shrink-0" />
@@ -105,6 +110,9 @@ function ToastContainer({ toasts }) {
   );
 }
 
+/* ─────────────────────────────────────────────
+   Confirm dialog
+───────────────────────────────────────────── */
 function ConfirmDialog({
   open,
   title,
@@ -112,7 +120,6 @@ function ConfirmDialog({
   onConfirm,
   onCancel,
   confirmLabel = "Delete",
-  confirmClassName = "",
 }) {
   return (
     <Dialog
@@ -121,30 +128,33 @@ function ConfirmDialog({
         if (!v) onCancel?.();
       }}
     >
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-sm rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-gray-800">{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="flex justify-end gap-2 mt-2">
-          <Button variant="outline" onClick={onCancel}>
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+          >
             Cancel
-          </Button>
-          <Button
+          </button>
+          <button
             onClick={() => onConfirm?.()}
-            className={
-              confirmClassName ||
-              "bg-red-600 hover:bg-red-700 text-white border-transparent"
-            }
+            className="px-4 py-2 rounded-xl bg-red-500 text-white text-sm hover:bg-red-600 transition-colors"
           >
             {confirmLabel}
-          </Button>
+          </button>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
+/* ─────────────────────────────────────────────
+   Amount input dialog
+───────────────────────────────────────────── */
 function AmountInputDialog({
   open,
   title,
@@ -155,7 +165,6 @@ function AmountInputDialog({
 }) {
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
-
   useEffect(() => {
     if (open) {
       setValue("");
@@ -179,14 +188,16 @@ function AmountInputDialog({
         if (!v) onCancel();
       }}
     >
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-sm rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-gray-800">{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
         <div className="mt-2 space-y-2">
-          <Label htmlFor="amount-input">Amount ({currency?.code})</Label>
-          <Input
+          <Label htmlFor="amount-input" className="text-sm text-gray-600">
+            Amount ({currency?.code})
+          </Label>
+          <input
             id="amount-input"
             autoFocus
             inputMode="numeric"
@@ -199,35 +210,84 @@ function AmountInputDialog({
             onKeyDown={(e) => {
               if (e.key === "Enter") handleConfirm();
             }}
+            className="w-full px-4 py-2.5 rounded-xl bg-white/80 border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
           />
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {error && (
+            <p className="text-xs text-red-500 flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" />
+              {error}
+            </p>
+          )}
         </div>
         <div className="flex justify-end gap-2 mt-3">
-          <Button variant="outline" onClick={onCancel}>
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+          >
             Cancel
-          </Button>
-          <Button
+          </button>
+          <button
             onClick={handleConfirm}
-            className="bg-gradient-to-r from-indigo-500 to-violet-600 text-white border-transparent hover:opacity-95"
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white text-sm hover:opacity-90 transition-opacity shadow-md"
           >
             Confirm
-          </Button>
+          </button>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
+/* ── Inline field error ── */
 function FieldError({ message }) {
   if (!message) return null;
   return (
-    <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
+    <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
       <AlertCircle className="h-3 w-3 shrink-0" />
       {message}
     </p>
   );
 }
 
+/* ── Gradient button ── */
+function GradBtn({
+  onClick,
+  children,
+  className = "",
+  disabled = false,
+  variant = "primary",
+}) {
+  const base =
+    variant === "primary"
+      ? "bg-gradient-to-r from-indigo-500 to-cyan-500 text-white shadow-md hover:shadow-lg hover:opacity-90"
+      : "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md hover:shadow-lg hover:opacity-90";
+  return (
+    <motion.button
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={onClick}
+      disabled={disabled}
+      className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 disabled:opacity-50 ${base} ${className}`}
+    >
+      {children}
+    </motion.button>
+  );
+}
+
+/* ── Glass card ── */
+function GlassCard({ children, className = "" }) {
+  return (
+    <div
+      className={`bg-white/70 backdrop-blur-sm rounded-2xl shadow-lg border border-white/60 ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Main component
+───────────────────────────────────────────── */
 export default function ExpenseTracker() {
   const {
     selectedMonth,
@@ -263,10 +323,8 @@ export default function ExpenseTracker() {
   const [goalErrors, setGoalErrors] = useState({});
 
   useEffect(() => {
-    const handleAuthError = (event) => {
+    const handleAuthError = () =>
       addToast("Sign-in failed. Please try again.", "error");
-      console.error("❌ Auth error:", event.detail);
-    };
     window.addEventListener("auth:error", handleAuthError);
     return () => window.removeEventListener("auth:error", handleAuthError);
   }, [addToast]);
@@ -281,7 +339,7 @@ export default function ExpenseTracker() {
         month: "long",
         year: "numeric",
       });
-      list.push({ key, label, isCustom: false });
+      list.push({ key, label });
     }
     return list;
   }, []);
@@ -291,9 +349,8 @@ export default function ExpenseTracker() {
       selectedMonth === "custom" &&
       customDateRange.start &&
       customDateRange.end
-    ) {
+    )
       return periodKey(customDateRange.start, customDateRange.end);
-    }
     return selectedMonth;
   }, [selectedMonth, customDateRange]);
 
@@ -318,10 +375,10 @@ export default function ExpenseTracker() {
 
   if (loading) {
     return (
-      <div className="min-h-screen w-full bg-gradient-to-br from-indigo-50 via-white to-sky-100 flex items-center justify-center">
+      <div className="min-h-screen w-full bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto mb-4" />
+          <p className="text-gray-500 text-sm">Loading your dashboard...</p>
         </div>
       </div>
     );
@@ -329,8 +386,9 @@ export default function ExpenseTracker() {
 
   if (!user) return <AuthPage />;
 
-  function openConfirm({ title, description, onConfirm }) {
-    setConfirmDialog({ open: true, title, description, onConfirm });
+  /* ── dialog helpers ── */
+  function openConfirm(opts) {
+    setConfirmDialog({ open: true, ...opts });
   }
   function closeConfirm() {
     setConfirmDialog({
@@ -340,8 +398,8 @@ export default function ExpenseTracker() {
       onConfirm: null,
     });
   }
-  function openAmountInput({ title, description, onConfirm }) {
-    setAmountDialog({ open: true, title, description, onConfirm });
+  function openAmountInput(opts) {
+    setAmountDialog({ open: true, ...opts });
   }
   function closeAmountInput() {
     setAmountDialog({
@@ -352,13 +410,13 @@ export default function ExpenseTracker() {
     });
   }
 
+  /* ── income ── */
   function addIncomeSource() {
     const errors = {};
     const amt = Number(source.amount);
     if (!source.name.trim()) errors.name = "Please enter a source name.";
     if (isNaN(amt) || amt < 0) errors.amount = "Please enter a valid amount.";
-    else if (amt > 10000000)
-      errors.amount = "Amount cannot exceed ₹10,000,000.";
+    else if (amt > 10000000) errors.amount = "Amount too large.";
     if (Object.keys(errors).length) {
       setSourceErrors(errors);
       return;
@@ -384,22 +442,23 @@ export default function ExpenseTracker() {
           ...s,
           incomeSources: (s.incomeSources || []).filter((i) => i.id !== id),
         }));
-        addToast("Income source removed.", "success");
+        addToast("Removed.", "success");
         closeConfirm();
       },
     });
   }
 
+  /* ── expenses ── */
   function addExpense() {
     const errors = {};
     const amt = Number(exp.amount);
     if (!exp.date) errors.date = "Please select a date.";
     else if (new Date(exp.date) > new Date())
-      errors.date = "Cannot add expenses for future dates.";
+      errors.date = "Cannot add future expenses.";
     if (!exp.category) errors.category = "Please select a category.";
     if (isNaN(amt) || amt <= 0) errors.amount = "Please enter a valid amount.";
     else if (amt > selectedCurrency.maxAmount)
-      errors.amount = `Amount cannot exceed ${fmt(selectedCurrency.maxAmount, selectedCurrency.code, selectedCurrency.locale)}.`;
+      errors.amount = `Max: ${fmt(selectedCurrency.maxAmount, selectedCurrency.code, selectedCurrency.locale)}`;
     if (Object.keys(errors).length) {
       setExpErrors(errors);
       return;
@@ -430,7 +489,7 @@ export default function ExpenseTracker() {
           ...s,
           expenses: (s.expenses || []).filter((e) => e.id !== id),
         }));
-        addToast("Expense deleted.", "success");
+        addToast("Deleted.", "success");
         closeConfirm();
       },
     });
@@ -439,10 +498,7 @@ export default function ExpenseTracker() {
   function setBudget(category, value) {
     const amt = Number(value);
     if (amt > selectedCurrency.maxAmount) {
-      addToast(
-        `Budget cannot exceed ${fmt(selectedCurrency.maxAmount, selectedCurrency.code, selectedCurrency.locale)}.`,
-        "error",
-      );
+      addToast("Budget too large.", "error");
       return;
     }
     setState((s) => ({
@@ -478,17 +534,17 @@ export default function ExpenseTracker() {
     addToast("CSV exported!", "success");
   }
 
+  /* ── categories ── */
   function validateCategoryName(nameRaw) {
     const name = (nameRaw || "").trim();
     if (!name) return "Enter a category name.";
     if (name.length > MAX_CATEGORY_NAME_LEN)
-      return `Keep it under ${MAX_CATEGORY_NAME_LEN} characters.`;
-    if (!/^[A-Za-z0-9 ]+$/.test(name))
-      return "Use letters, numbers, and spaces only.";
+      return `Max ${MAX_CATEGORY_NAME_LEN} chars.`;
+    if (!/^[A-Za-z0-9 ]+$/.test(name)) return "Letters, numbers, spaces only.";
     if ((categories || []).some((c) => c.toLowerCase() === name.toLowerCase()))
-      return "That category already exists.";
+      return "Already exists.";
     if ((categories || []).length >= MAX_CATEGORIES)
-      return `You can have up to ${MAX_CATEGORIES} categories.`;
+      return `Max ${MAX_CATEGORIES} categories.`;
     return "";
   }
 
@@ -502,21 +558,18 @@ export default function ExpenseTracker() {
     setState((s) => ({
       ...s,
       categories: [...(s.categories || []), name],
-      catBudgets: {
-        ...(s.catBudgets || {}),
-        [name]: s.catBudgets?.[name] ?? 0,
-      },
+      catBudgets: { ...(s.catBudgets || {}), [name]: 0 },
     }));
     setNewCat("");
     setCatError("");
-    addToast(`Category "${name}" added!`, "success");
+    addToast(`"${name}" added!`, "success");
   }
 
   function deleteCategory(name) {
     if (name === "Other") return;
     openConfirm({
       title: `Delete "${name}"?`,
-      description: `All expenses in "${name}" will move to "Other". This cannot be undone.`,
+      description: `Expenses in "${name}" will move to "Other".`,
       onConfirm: () => {
         setState((s) => ({
           ...s,
@@ -531,24 +584,25 @@ export default function ExpenseTracker() {
         setExp((prev) =>
           prev.category === name ? { ...prev, category: "Other" } : prev,
         );
-        addToast(`Category "${name}" deleted.`, "success");
+        addToast(`"${name}" deleted.`, "success");
         closeConfirm();
       },
     });
   }
 
+  /* ── goals ── */
   function addSavingsGoal() {
     const errors = {};
     const targetAmt = Number(newGoal.targetAmount);
     const currentAmt = Number(newGoal.currentAmount);
     if (!newGoal.name.trim()) errors.name = "Please enter a goal name.";
     if (isNaN(targetAmt) || targetAmt <= 0)
-      errors.targetAmount = "Please enter a valid target amount.";
+      errors.targetAmount = "Please enter a valid target.";
     if (isNaN(currentAmt) || currentAmt < 0)
-      errors.currentAmount = "Please enter a valid current amount.";
+      errors.currentAmount = "Please enter a valid amount.";
     else if (currentAmt > targetAmt)
-      errors.currentAmount = "Current amount cannot exceed target amount.";
-    if (!newGoal.targetDate) errors.targetDate = "Please select a target date.";
+      errors.currentAmount = "Cannot exceed target.";
+    if (!newGoal.targetDate) errors.targetDate = "Please select a date.";
     if (Object.keys(errors).length) {
       setGoalErrors(errors);
       return;
@@ -574,14 +628,14 @@ export default function ExpenseTracker() {
       targetDate: "",
       priority: "medium",
     });
-    addToast("Savings goal added!", "success");
+    addToast("Goal added!", "success");
   }
 
   function updateSavingsGoal(id, updates) {
     setState((s) => ({
       ...s,
-      savingsGoals: (s.savingsGoals || []).map((goal) =>
-        goal.id === id ? { ...goal, ...updates } : goal,
+      savingsGoals: (s.savingsGoals || []).map((g) =>
+        g.id === id ? { ...g, ...updates } : g,
       ),
     }));
   }
@@ -589,14 +643,13 @@ export default function ExpenseTracker() {
   function removeSavingsGoal(id, goalName) {
     openConfirm({
       title: `Delete "${goalName}"?`,
-      description:
-        "Your savings goal and all its progress will be permanently deleted.",
+      description: "Your goal and progress will be permanently deleted.",
       onConfirm: () => {
         setState((s) => ({
           ...s,
-          savingsGoals: (s.savingsGoals || []).filter((goal) => goal.id !== id),
+          savingsGoals: (s.savingsGoals || []).filter((g) => g.id !== id),
         }));
-        addToast("Savings goal deleted.", "success");
+        addToast("Goal deleted.", "success");
         closeConfirm();
       },
     });
@@ -604,7 +657,7 @@ export default function ExpenseTracker() {
 
   function handleGoalAddMoney(goal) {
     openAmountInput({
-      title: `Add money to "${goal.name}"`,
+      title: `Add to "${goal.name}"`,
       description: `Current: ${fmt(goal.currentAmount, selectedCurrency.code, selectedCurrency.locale)} / Target: ${fmt(goal.targetAmount, selectedCurrency.code, selectedCurrency.locale)}`,
       onConfirm: (amount) => {
         updateSavingsGoal(goal.id, {
@@ -614,7 +667,7 @@ export default function ExpenseTracker() {
           ),
         });
         addToast(
-          `Added ${fmt(amount, selectedCurrency.code, selectedCurrency.locale)} to "${goal.name}".`,
+          `Added ${fmt(amount, selectedCurrency.code, selectedCurrency.locale)}!`,
           "success",
         );
         closeAmountInput();
@@ -625,13 +678,13 @@ export default function ExpenseTracker() {
   function handleGoalWithdraw(goal) {
     openAmountInput({
       title: `Withdraw from "${goal.name}"`,
-      description: `Current balance: ${fmt(goal.currentAmount, selectedCurrency.code, selectedCurrency.locale)}`,
+      description: `Balance: ${fmt(goal.currentAmount, selectedCurrency.code, selectedCurrency.locale)}`,
       onConfirm: (amount) => {
         updateSavingsGoal(goal.id, {
           currentAmount: Math.max(goal.currentAmount - amount, 0),
         });
         addToast(
-          `Withdrew ${fmt(amount, selectedCurrency.code, selectedCurrency.locale)} from "${goal.name}".`,
+          `Withdrew ${fmt(amount, selectedCurrency.code, selectedCurrency.locale)}.`,
           "success",
         );
         closeAmountInput();
@@ -639,8 +692,15 @@ export default function ExpenseTracker() {
     });
   }
 
+  const anyOverBudget = categories.some((c) => {
+    const spent = totals.byCat.find((x) => x.name === c)?.value || 0;
+    const bud = Number(catBudgets[c]) || 0;
+    return bud > 0 && spent > bud;
+  });
+
+  /* ────────────────────── UI ────────────────────── */
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-indigo-50 via-white to-sky-100 p-6">
+    <div className="min-h-screen w-full bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100 p-4 md:p-6">
       <ToastContainer toasts={toasts} />
       <ConfirmDialog
         open={confirmDialog.open}
@@ -658,29 +718,34 @@ export default function ExpenseTracker() {
         onCancel={closeAmountInput}
       />
 
-      <div className="mx-auto max-w-5xl">
-        {/* Header */}
-        <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-nowrap sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-indigo-700 flex items-center gap-2">
-              Expense Tracker
-              <span className="ml-2 align-middle rounded-full bg-gradient-to-r from-indigo-500 to-violet-600 px-2 py-0.5 text-xs font-medium text-white animate-pulse">
-                PWA
-              </span>
-            </h1>
-            <p className="text-sm text-gray-500 italic">
-              Powered by{" "}
-              <span className="font-semibold text-indigo-700">Ancy</span> — your
-              simple way to manage money smartly.
-            </p>
+      <div className="mx-auto max-w-7xl">
+        {/* ── HEADER ── */}
+        <motion.header
+          {...stagger(0)}
+          className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shadow-lg">
+              <LayoutDashboard className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-800 leading-tight">
+                Expense Tracker
+              </h1>
+              <p className="text-xs text-gray-400">
+                Your smart way to manage your money.
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-3 flex-shrink-0 flex-wrap md:flex-nowrap">
-            <div className="flex flex-col gap-2">
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Period pill selector */}
+            <div className="flex flex-col gap-1.5">
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger className="min-w-[14rem] w-[14rem] h-10 md:h-9">
-                  <SelectValue placeholder="Select month" />
+                <SelectTrigger className="h-9 px-4 rounded-full border border-gray-200/60 bg-white/70 backdrop-blur-sm text-sm min-w-[10rem] shadow-sm">
+                  <SelectValue placeholder="Select period" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-2xl">
                   {monthOptions.map((m) => (
                     <SelectItem key={m.key} value={m.key}>
                       {m.label}
@@ -691,325 +756,309 @@ export default function ExpenseTracker() {
               {selectedMonth === "custom" && (
                 <div className="flex items-center gap-2">
                   <div>
-                    <Label htmlFor="start-date" className="text-xs">
-                      From
-                    </Label>
-                    <Input
-                      id="start-date"
+                    <p className="text-[10px] text-gray-400 mb-0.5">From</p>
+                    <input
                       type="date"
                       value={customDateRange.start}
                       onChange={(e) =>
-                        setCustomDateRange((prev) => ({
-                          ...prev,
+                        setCustomDateRange((p) => ({
+                          ...p,
                           start: e.target.value,
                         }))
                       }
-                      className="h-8 w-32 text-xs"
+                      className="h-8 px-2 rounded-xl border border-gray-200 bg-white/70 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 w-32"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="end-date" className="text-xs">
-                      To
-                    </Label>
-                    <Input
-                      id="end-date"
+                    <p className="text-[10px] text-gray-400 mb-0.5">To</p>
+                    <input
                       type="date"
                       value={customDateRange.end}
                       onChange={(e) =>
-                        setCustomDateRange((prev) => ({
-                          ...prev,
+                        setCustomDateRange((p) => ({
+                          ...p,
                           end: e.target.value,
                         }))
                       }
-                      className="h-8 w-32 text-xs"
+                      className="h-8 px-2 rounded-xl border border-gray-200 bg-white/70 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 w-32"
                     />
                   </div>
                 </div>
               )}
             </div>
+
             <CurrencySelector />
-            <Button
-              variant="outline"
+
+            <motion.button
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.97 }}
               onClick={exportCSV}
-              className="gap-2 whitespace-nowrap h-10 md:h-9"
+              className="h-9 px-4 rounded-full border border-gray-200/60 bg-white/70 backdrop-blur-sm text-sm text-gray-600 flex items-center gap-1.5 shadow-sm hover:bg-white transition-colors"
             >
               <Download className="h-4 w-4" />
-              Export Expenses
-            </Button>
-            <div className="h-10 md:h-9">
-              <AuthButtons className="h-full" />
+              <span className="hidden sm:inline">Export</span>
+            </motion.button>
+
+            <div className="h-9">
+              <AuthButtons />
             </div>
           </div>
-        </header>
+        </motion.header>
 
-        {/* Summary row */}
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35 }}
-            {...hoverFx}
-            className="md:col-span-2"
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-indigo-700">
-                  <Wallet className="h-5 w-5" />
-                  Monthly Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-                  <Stat
-                    label="Income"
-                    value={fmt(
-                      totals.income,
-                      selectedCurrency.code,
-                      selectedCurrency.locale,
-                    )}
-                  />
-                  <Stat
-                    label="Expenses"
-                    value={fmt(
-                      totals.totalExp,
-                      selectedCurrency.code,
-                      selectedCurrency.locale,
-                    )}
-                  />
-                  <Stat
-                    label="Remaining"
-                    value={fmt(
-                      totals.remaining,
-                      selectedCurrency.code,
-                      selectedCurrency.locale,
-                    )}
-                  />
-                  <Stat label="Budget Used" value={`${totals.util}%`} />
-                </div>
-                {savingsGoals.length > 0 && (
-                  <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
-                    <h4 className="font-medium text-green-800 mb-2">
-                      Savings Goals Progress
-                    </h4>
-                    <div className="space-y-2">
-                      {savingsGoals.slice(0, 3).map((goal) => {
-                        const progress =
-                          (goal.currentAmount / goal.targetAmount) * 100;
-                        return (
-                          <div
-                            key={goal.id}
-                            className="flex items-center justify-between text-sm"
-                          >
-                            <span className="text-green-700 truncate">
-                              {goal.name}
-                            </span>
-                            <span className="text-green-600 font-medium">
-                              {progress.toFixed(0)}%
-                            </span>
-                          </div>
-                        );
-                      })}
-                      {savingsGoals.length > 3 && (
-                        <div className="text-xs text-green-600 text-center pt-1">
-                          +{savingsGoals.length - 3} more goals
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                <div className="mt-4">
-                  <ProgressBar percent={totals.util} />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Total expenses / total income.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* Income Sources */}
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.05 }}
-            {...hoverFx}
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-indigo-700">
-                  <Wallet2 className="h-5 w-5" />
-                  Income Sources
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 gap-3">
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-2">
-                      <Label>Name</Label>
-                      <Input
-                        placeholder="e.g., Salary, Freelance"
-                        value={source.name}
-                        className={`h-9 w-full ${sourceErrors.name ? "border-red-400" : ""}`}
-                        onChange={(e) => {
-                          setSource({ ...source, name: e.target.value });
-                          if (sourceErrors.name)
-                            setSourceErrors((p) => ({ ...p, name: "" }));
-                        }}
-                      />
-                      <FieldError message={sourceErrors.name} />
-                    </div>
-                    <div>
-                      <Label>Amount ({selectedCurrency.code})</Label>
-                      <Input
-                        inputMode="numeric"
-                        placeholder="e.g., 75000"
-                        value={source.amount}
-                        className={sourceErrors.amount ? "border-red-400" : ""}
-                        onChange={(e) => {
-                          setSource({
-                            ...source,
-                            amount: e.target.value.replace(/[^0-9]/g, ""),
-                          });
-                          if (sourceErrors.amount)
-                            setSourceErrors((p) => ({ ...p, amount: "" }));
-                        }}
-                      />
-                      <FieldError message={sourceErrors.amount} />
-                    </div>
-                  </div>
-                  <Button
-                    onClick={addIncomeSource}
-                    className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white border-transparent hover:opacity-95"
+        {/* ── TWO-COLUMN LAYOUT ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
+          {/* ══ LEFT COLUMN ══ */}
+          <div className="space-y-6">
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                {
+                  label: "Income",
+                  value: fmt(
+                    totals.income,
+                    selectedCurrency.code,
+                    selectedCurrency.locale,
+                  ),
+                  icon: Wallet,
+                  tint: "from-indigo-50 to-indigo-100/60",
+                  icon_color: "text-indigo-500",
+                },
+                {
+                  label: "Expenses",
+                  value: fmt(
+                    totals.totalExp,
+                    selectedCurrency.code,
+                    selectedCurrency.locale,
+                  ),
+                  icon: TrendingUp,
+                  tint: "from-rose-50 to-rose-100/60",
+                  icon_color: "text-rose-500",
+                },
+                {
+                  label: "Remaining",
+                  value: fmt(
+                    totals.remaining,
+                    selectedCurrency.code,
+                    selectedCurrency.locale,
+                  ),
+                  icon: Wallet2,
+                  tint: "from-cyan-50 to-cyan-100/60",
+                  icon_color: "text-cyan-500",
+                },
+                {
+                  label: "Budget Used",
+                  value: `${totals.util}%`,
+                  icon: Target,
+                  tint: "from-amber-50 to-amber-100/60",
+                  icon_color: "text-amber-500",
+                },
+              ].map((card, i) => (
+                <motion.div key={card.label} {...stagger(i + 1)}>
+                  <div
+                    className={`bg-gradient-to-br ${card.tint} backdrop-blur-sm rounded-2xl border border-white/60 shadow-md p-4`}
                   >
-                    Add Source
-                  </Button>
-                  {incomeSources.length === 0 ? (
-                    <p className="text-xs text-gray-500">
-                      No income sources added yet.
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">
+                        {card.label}
+                      </p>
+                      <card.icon className={`h-4 w-4 ${card.icon_color}`} />
+                    </div>
+                    <p className="text-xl font-bold text-gray-800">
+                      {card.value}
                     </p>
-                  ) : (
-                    <ul className="divide-y rounded-lg border bg-white">
-                      {incomeSources.map((i) => (
-                        <li
-                          key={i.id}
-                          className="flex items-center justify-between px-3 py-2 text-sm"
-                        >
-                          <span className="truncate">{i.name}</span>
-                          <div className="flex items-center gap-3">
-                            <span className="font-medium">{fmt(i.amount)}</span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Delete"
-                              onClick={() => removeIncomeSource(i.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
 
-        {/* Savings Goals */}
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.1 }}
-          {...hoverFx}
-          className="mt-6"
-        >
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-indigo-700">
-                <Target className="h-5 w-5" />
-                Savings Goals
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 gap-3">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-6 md:items-start">
-                  <div>
-                    <Label>Goal Name</Label>
-                    <Input
-                      placeholder="e.g., Emergency Fund"
-                      value={newGoal.name}
-                      className={`h-9 w-full ${goalErrors.name ? "border-red-400" : ""}`}
+            {/* Progress bar */}
+            <motion.div {...stagger(5)}>
+              <GlassCard className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-gray-500">
+                    Overall budget usage
+                  </span>
+                  <span className="text-xs font-semibold text-indigo-600">
+                    {totals.util}%
+                  </span>
+                </div>
+                <div className="h-2.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(totals.util, 100)}%` }}
+                    transition={{ duration: 0.8, ease: "easeOut" }}
+                    className={`h-2.5 rounded-full ${totals.util > 100 ? "bg-red-400" : totals.util > 80 ? "bg-orange-400" : "bg-gradient-to-r from-indigo-500 to-cyan-500"}`}
+                  />
+                </div>
+                <p className="mt-1.5 text-xs text-gray-400">
+                  Total expenses / total income
+                </p>
+              </GlassCard>
+            </motion.div>
+
+            {/* Income Sources */}
+            <motion.div {...stagger(6)}>
+              <GlassCard className="p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Wallet2 className="h-4 w-4 text-indigo-500" />
+                  <h2 className="font-semibold text-gray-700 text-sm">
+                    Income Sources
+                  </h2>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="text-xs text-gray-400">Source name</label>
+                    <input
+                      placeholder="e.g., Salary, Freelance"
+                      value={source.name}
+                      className={`w-full px-3 py-2.5 rounded-xl bg-white/60 border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${sourceErrors.name ? "border-red-300" : "border-gray-200"}`}
                       onChange={(e) => {
-                        setNewGoal({ ...newGoal, name: e.target.value });
-                        if (goalErrors.name)
-                          setGoalErrors((p) => ({ ...p, name: "" }));
+                        setSource({ ...source, name: e.target.value });
+                        if (sourceErrors.name)
+                          setSourceErrors((p) => ({ ...p, name: "" }));
                       }}
                     />
-                    <FieldError message={goalErrors.name} />
+                    <FieldError message={sourceErrors.name} />
                   </div>
-                  <div>
-                    <Label>Target ({selectedCurrency.code})</Label>
-                    <Input
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-400">
+                      Amount ({selectedCurrency.code})
+                    </label>
+                    <input
                       inputMode="numeric"
-                      placeholder="e.g., 100000"
-                      value={newGoal.targetAmount}
-                      className={`h-9 w-full ${goalErrors.targetAmount ? "border-red-400" : ""}`}
+                      placeholder="e.g., 75000"
+                      value={source.amount}
+                      className={`w-full px-3 py-2.5 rounded-xl bg-white/60 border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${sourceErrors.amount ? "border-red-300" : "border-gray-200"}`}
                       onChange={(e) => {
-                        setNewGoal({
-                          ...newGoal,
-                          targetAmount: e.target.value.replace(/[^0-9]/g, ""),
+                        setSource({
+                          ...source,
+                          amount: e.target.value.replace(/[^0-9]/g, ""),
                         });
-                        if (goalErrors.targetAmount)
-                          setGoalErrors((p) => ({ ...p, targetAmount: "" }));
+                        if (sourceErrors.amount)
+                          setSourceErrors((p) => ({ ...p, amount: "" }));
                       }}
                     />
-                    <FieldError message={goalErrors.targetAmount} />
+                    <FieldError message={sourceErrors.amount} />
                   </div>
-                  <div>
-                    <Label>Current ({selectedCurrency.code})</Label>
-                    <Input
-                      inputMode="numeric"
-                      placeholder="e.g., 25000"
-                      value={newGoal.currentAmount}
-                      className={`h-9 w-full ${goalErrors.currentAmount ? "border-red-400" : ""}`}
-                      onChange={(e) => {
-                        setNewGoal({
-                          ...newGoal,
-                          currentAmount: e.target.value.replace(/[^0-9]/g, ""),
-                        });
-                        if (goalErrors.currentAmount)
-                          setGoalErrors((p) => ({ ...p, currentAmount: "" }));
-                      }}
-                    />
-                    <FieldError message={goalErrors.currentAmount} />
-                  </div>
-                  <div>
-                    <Label>Target Date</Label>
-                    <Input
-                      type="date"
-                      value={newGoal.targetDate}
-                      className={`h-9 w-full ${goalErrors.targetDate ? "border-red-400" : ""}`}
-                      onChange={(e) => {
-                        setNewGoal({ ...newGoal, targetDate: e.target.value });
-                        if (goalErrors.targetDate)
-                          setGoalErrors((p) => ({ ...p, targetDate: "" }));
-                      }}
-                    />
-                    <FieldError message={goalErrors.targetDate} />
-                  </div>
-                  <div>
-                    <Label>Priority</Label>
+                </div>
+                <GradBtn onClick={addIncomeSource} className="w-full mb-4">
+                  + Add Source
+                </GradBtn>
+
+                {incomeSources.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-3">
+                    No income sources yet.
+                  </p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    <AnimatePresence>
+                      {incomeSources.map((i) => (
+                        <motion.li
+                          key={i.id}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: 10 }}
+                          className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/50 border border-gray-100 text-sm"
+                        >
+                          <span className="text-gray-700 font-medium truncate">
+                            {i.name}
+                          </span>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <span className="text-gray-600 font-semibold">
+                              {fmt(
+                                i.amount,
+                                selectedCurrency.code,
+                                selectedCurrency.locale,
+                              )}
+                            </span>
+                            <button
+                              onClick={() => removeIncomeSource(i.id)}
+                              className="text-gray-300 hover:text-red-400 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </motion.li>
+                      ))}
+                    </AnimatePresence>
+                  </ul>
+                )}
+              </GlassCard>
+            </motion.div>
+
+            {/* Savings Goals */}
+            <motion.div {...stagger(7)}>
+              <GlassCard className="p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <PiggyBank className="h-4 w-4 text-green-500" />
+                  <h2 className="font-semibold text-gray-700 text-sm">
+                    Savings Goals
+                  </h2>
+                </div>
+
+                {/* Add goal form */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+                  {[
+                    {
+                      label: "Goal Name",
+                      key: "name",
+                      placeholder: "e.g., Emergency Fund",
+                      type: "text",
+                    },
+                    {
+                      label: `Target (${selectedCurrency.code})`,
+                      key: "targetAmount",
+                      placeholder: "100000",
+                      type: "numeric",
+                    },
+                    {
+                      label: `Current (${selectedCurrency.code})`,
+                      key: "currentAmount",
+                      placeholder: "25000",
+                      type: "numeric",
+                    },
+                    {
+                      label: "Target Date",
+                      key: "targetDate",
+                      placeholder: "",
+                      type: "date",
+                    },
+                  ].map(({ label, key, placeholder, type }) => (
+                    <div key={key} className="space-y-1">
+                      <label className="text-xs text-gray-400">{label}</label>
+                      <input
+                        type={type === "date" ? "date" : "text"}
+                        inputMode={type === "numeric" ? "numeric" : undefined}
+                        placeholder={placeholder}
+                        value={newGoal[key]}
+                        className={`w-full px-3 py-2.5 rounded-xl bg-white/60 border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${goalErrors[key] ? "border-red-300" : "border-gray-200"}`}
+                        onChange={(e) => {
+                          setNewGoal({
+                            ...newGoal,
+                            [key]:
+                              type === "numeric"
+                                ? e.target.value.replace(/[^0-9]/g, "")
+                                : e.target.value,
+                          });
+                          if (goalErrors[key])
+                            setGoalErrors((p) => ({ ...p, [key]: "" }));
+                        }}
+                      />
+                      <FieldError message={goalErrors[key]} />
+                    </div>
+                  ))}
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-400">Priority</label>
                     <Select
                       value={newGoal.priority}
-                      onValueChange={(value) =>
-                        setNewGoal({ ...newGoal, priority: value })
+                      onValueChange={(v) =>
+                        setNewGoal({ ...newGoal, priority: v })
                       }
                     >
-                      <SelectTrigger className="h-9 w-full">
+                      <SelectTrigger className="h-[42px] rounded-xl bg-white/60 border-gray-200 text-sm">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="rounded-2xl">
                         <SelectItem value="low">Low</SelectItem>
                         <SelectItem value="medium">Medium</SelectItem>
                         <SelectItem value="high">High</SelectItem>
@@ -1017,63 +1066,56 @@ export default function ExpenseTracker() {
                     </Select>
                   </div>
                   <div className="flex items-end">
-                    <Button
+                    <GradBtn
                       onClick={addSavingsGoal}
-                      className="w-full h-9 bg-gradient-to-r from-green-500 to-emerald-600 text-white border-transparent hover:opacity-95"
+                      variant="secondary"
+                      className="w-full"
                     >
-                      Add Goal
-                    </Button>
+                      + Add Goal
+                    </GradBtn>
                   </div>
                 </div>
+
                 {savingsGoals.length === 0 ? (
-                  <p className="text-xs text-gray-500 text-center py-4">
-                    No savings goals set yet. Start by adding your first goal
-                    above!
+                  <p className="text-xs text-gray-400 text-center py-4">
+                    No savings goals yet. Add your first one above!
                   </p>
                 ) : (
-                  <div className="space-y-3">
-                    {savingsGoals.map((goal) => (
-                      <SavingsGoalCard
-                        key={goal.id}
-                        goal={goal}
-                        onAddMoney={() => handleGoalAddMoney(goal)}
-                        onWithdraw={() => handleGoalWithdraw(goal)}
-                        onDelete={() => removeSavingsGoal(goal.id, goal.name)}
-                        selectedCurrency={selectedCurrency}
-                      />
-                    ))}
+                  <div className="space-y-3 mt-2">
+                    <AnimatePresence>
+                      {savingsGoals.map((goal) => (
+                        <SavingsGoalCard
+                          key={goal.id}
+                          goal={goal}
+                          onAddMoney={() => handleGoalAddMoney(goal)}
+                          onWithdraw={() => handleGoalWithdraw(goal)}
+                          onDelete={() => removeSavingsGoal(goal.id, goal.name)}
+                          selectedCurrency={selectedCurrency}
+                        />
+                      ))}
+                    </AnimatePresence>
                   </div>
                 )}
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+              </GlassCard>
+            </motion.div>
 
-        {/* Add expense + Chart/Budgets/Manage */}
-        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35 }}
-            {...hoverFx}
-            className="lg:col-span-2"
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-indigo-700">
-                  <Plus className="h-5 w-5" />
-                  Add Expense
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-6 md:items-start">
-                  <div className="md:col-span-2">
-                    <Label htmlFor="date">Date</Label>
-                    <Input
-                      id="date"
+            {/* Add Expense */}
+            <motion.div {...stagger(8)}>
+              <GlassCard className="p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Plus className="h-4 w-4 text-indigo-500" />
+                  <h2 className="font-semibold text-gray-700 text-sm">
+                    Add Expense
+                  </h2>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-6 gap-3 mb-3 sm:items-start">
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="text-xs text-gray-400">Date</label>
+                    <input
                       type="date"
-                      className={`h-10 md:h-9 w-full ${expErrors.date ? "border-red-400" : ""}`}
                       value={exp.date}
+                      className={`w-full px-3 py-2.5 rounded-xl bg-white/60 border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${expErrors.date ? "border-red-300" : "border-gray-200"}`}
                       onChange={(e) => {
                         setExp({ ...exp, date: e.target.value });
                         if (expErrors.date)
@@ -1082,8 +1124,8 @@ export default function ExpenseTracker() {
                     />
                     <FieldError message={expErrors.date} />
                   </div>
-                  <div className="md:col-span-2">
-                    <Label>Category</Label>
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="text-xs text-gray-400">Category</label>
                     <Select
                       value={exp.category}
                       onValueChange={(v) => {
@@ -1093,11 +1135,11 @@ export default function ExpenseTracker() {
                       }}
                     >
                       <SelectTrigger
-                        className={`h-10 md:h-9 ${expErrors.category ? "border-red-400" : ""}`}
+                        className={`h-[42px] rounded-xl bg-white/60 text-sm ${expErrors.category ? "border-red-300" : "border-gray-200"}`}
                       >
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="rounded-2xl">
                         {categories.map((c) => (
                           <SelectItem key={c} value={c}>
                             {c}
@@ -1107,14 +1149,15 @@ export default function ExpenseTracker() {
                     </Select>
                     <FieldError message={expErrors.category} />
                   </div>
-                  <div className="md:col-span-2">
-                    <Label htmlFor="amount">Amount</Label>
-                    <Input
-                      id="amount"
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="text-xs text-gray-400">
+                      Amount ({selectedCurrency.code})
+                    </label>
+                    <input
                       inputMode="decimal"
-                      className={`h-10 md:h-9 ${expErrors.amount ? "border-red-400" : ""}`}
                       placeholder="e.g., 1200"
                       value={exp.amount}
+                      className={`w-full px-3 py-2.5 rounded-xl bg-white/60 border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${expErrors.amount ? "border-red-300" : "border-gray-200"}`}
                       onChange={(e) => {
                         setExp({
                           ...exp,
@@ -1126,86 +1169,94 @@ export default function ExpenseTracker() {
                     />
                     <FieldError message={expErrors.amount} />
                   </div>
-                  <div className="md:col-span-5">
-                    <Label htmlFor="desc">Description (optional)</Label>
-                    <Input
-                      id="desc"
-                      className="h-10 md:h-9"
+                  <div className="sm:col-span-5 space-y-1">
+                    <label className="text-xs text-gray-400">
+                      Description (optional)
+                    </label>
+                    <input
                       placeholder="e.g., BMTC pass, groceries at DMart"
                       value={exp.description}
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/60 border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
                       onChange={(e) =>
                         setExp({ ...exp, description: e.target.value })
                       }
                     />
                   </div>
-                  <div className="md:col-span-1 flex items-end">
-                    <Button
-                      className="w-full h-10 md:h-9 bg-gradient-to-r from-brand-start to-brand-end text-white border-transparent hover:opacity-95"
-                      onClick={addExpense}
-                    >
-                      Add
-                    </Button>
+                  <div className="sm:col-span-1 flex items-end">
+                    <GradBtn onClick={addExpense} className="w-full">
+                      + Add
+                    </GradBtn>
                   </div>
                 </div>
 
-                {/* Mobile list */}
-                <div className="mt-6 md:hidden">
-                  {expenses.length === 0 ? (
-                    <p className="p-4 text-center text-gray-400">
-                      No expenses yet. Add your first one above.
-                    </p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {expenses.map((e) => (
-                        <li
+                {/* Mobile cards */}
+                <div className="mt-4 md:hidden space-y-2">
+                  <AnimatePresence>
+                    {expenses.length === 0 ? (
+                      <p className="text-center text-xs text-gray-400 py-4">
+                        No expenses yet.
+                      </p>
+                    ) : (
+                      expenses.map((e) => (
+                        <motion.div
                           key={e.id}
-                          className="rounded-xl border bg-white p-3 shadow-sm"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="flex items-start justify-between gap-3 px-3 py-3 rounded-xl bg-white/50 border border-gray-100"
                         >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="text-sm font-medium">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="inline-block h-2 w-2 rounded-full shrink-0"
+                                style={{ background: colorFor(e.category) }}
+                              />
+                              <span className="text-sm font-medium text-gray-700">
                                 {e.category}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {new Date(e.date).toLocaleDateString()}
-                              </div>
-                              {e.description && (
-                                <div className="mt-1 text-xs text-gray-600">
-                                  {e.description}
-                                </div>
-                              )}
+                              </span>
                             </div>
-                            <div className="text-right">
-                              <div className="text-sm font-semibold">
-                                {fmt(e.amount)}
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="mt-1"
-                                onClick={() => removeExpense(e.id)}
-                                title="Delete"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {new Date(e.date).toLocaleDateString()}
+                            </p>
+                            {e.description && (
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                {e.description}
+                              </p>
+                            )}
                           </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-sm font-semibold text-gray-800">
+                              {fmt(
+                                e.amount,
+                                selectedCurrency.code,
+                                selectedCurrency.locale,
+                              )}
+                            </span>
+                            <button
+                              onClick={() => removeExpense(e.id)}
+                              className="text-gray-300 hover:text-red-400 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </motion.div>
+                      ))
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* Desktop table */}
-                <div className="mt-6 hidden md:block overflow-x-auto">
+                <div className="mt-4 hidden md:block overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b bg-gray-100 text-left text-gray-600">
-                        <th className="p-2">Date</th>
-                        <th className="p-2">Category</th>
-                        <th className="p-2">Description</th>
-                        <th className="p-2 text-right">Amount</th>
-                        <th className="p-2 text-right">Actions</th>
+                      <tr className="text-left text-xs text-gray-400 border-b border-gray-200/50">
+                        <th className="pb-2 pl-2 font-medium">Date</th>
+                        <th className="pb-2 font-medium">Category</th>
+                        <th className="pb-2 font-medium">Description</th>
+                        <th className="pb-2 text-right font-medium">Amount</th>
+                        <th className="pb-2 text-right pr-2 font-medium">
+                          Action
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1213,393 +1264,367 @@ export default function ExpenseTracker() {
                         <tr>
                           <td
                             colSpan={5}
-                            className="p-4 text-center text-gray-400"
+                            className="py-8 text-center text-xs text-gray-400"
                           >
                             No expenses yet. Add your first one above.
                           </td>
                         </tr>
                       ) : (
-                        expenses.map((e) => (
-                          <tr key={e.id} className="border-b last:border-none">
-                            <td className="p-2">
-                              {new Date(e.date).toLocaleDateString()}
-                            </td>
-                            <td className="p-2">{e.category}</td>
-                            <td className="p-2">{e.description}</td>
-                            <td className="p-2 text-right">{fmt(e.amount)}</td>
-                            <td className="p-2 text-right">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => removeExpense(e.id)}
-                                title="Delete"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </td>
-                          </tr>
-                        ))
+                        <AnimatePresence>
+                          {expenses.map((e) => (
+                            <motion.tr
+                              key={e.id}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              className="border-b border-gray-100/60 hover:bg-white/40 transition-colors rounded-xl group"
+                            >
+                              <td className="py-3 pl-2 text-gray-500">
+                                {new Date(e.date).toLocaleDateString()}
+                              </td>
+                              <td className="py-3">
+                                <span className="flex items-center gap-1.5">
+                                  <span
+                                    className="inline-block h-2 w-2 rounded-full shrink-0"
+                                    style={{ background: colorFor(e.category) }}
+                                  />
+                                  <span className="text-gray-700">
+                                    {e.category}
+                                  </span>
+                                </span>
+                              </td>
+                              <td className="py-3 text-gray-400">
+                                {e.description}
+                              </td>
+                              <td className="py-3 text-right font-semibold text-gray-800">
+                                {fmt(
+                                  e.amount,
+                                  selectedCurrency.code,
+                                  selectedCurrency.locale,
+                                )}
+                              </td>
+                              <td className="py-3 text-right pr-2">
+                                <button
+                                  onClick={() => removeExpense(e.id)}
+                                  className="text-gray-200 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </td>
+                            </motion.tr>
+                          ))}
+                        </AnimatePresence>
                       )}
                     </tbody>
                   </table>
                 </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* Right column */}
-          <div className="space-y-6">
-            {/* ── By Category with legend ── */}
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, delay: 0.05 }}
-              {...hoverFx}
-            >
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-indigo-700">By Category</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {totals.byCat.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-10 text-center">
-                      <div className="text-4xl mb-2">📊</div>
-                      <p className="text-sm text-gray-500">
-                        Add expenses to see the breakdown.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="h-52">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={totals.byCat}
-                              dataKey="value"
-                              nameKey="name"
-                              innerRadius={52}
-                              outerRadius={82}
-                            >
-                              {totals.byCat.map((entry) => (
-                                <Cell
-                                  key={entry.name}
-                                  fill={colorFor(entry.name)}
-                                />
-                              ))}
-                            </Pie>
-                            <Tooltip
-                              formatter={(v) =>
-                                fmt(
-                                  Number(v),
-                                  selectedCurrency.code,
-                                  selectedCurrency.locale,
-                                )
-                              }
-                              contentStyle={{ borderRadius: 12 }}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-
-                      {/* Legend — only categories with spending */}
-                      <div className="mt-3 space-y-2">
-                        {totals.byCat.map((entry) => {
-                          const pct =
-                            totals.totalExp > 0
-                              ? ((entry.value / totals.totalExp) * 100).toFixed(
-                                  1,
-                                )
-                              : "0.0";
-                          return (
-                            <div
-                              key={entry.name}
-                              className="flex items-center justify-between text-xs"
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span
-                                  className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
-                                  style={{ background: colorFor(entry.name) }}
-                                />
-                                <span className="text-gray-700 truncate">
-                                  {entry.name}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0 ml-2 text-gray-500">
-                                <span>
-                                  {fmt(
-                                    entry.value,
-                                    selectedCurrency.code,
-                                    selectedCurrency.locale,
-                                  )}
-                                </span>
-                                <span className="w-9 text-right font-medium text-gray-700">
-                                  {pct}%
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
+              </GlassCard>
             </motion.div>
 
-            {/* ── Category Budgets with progress bars ── */}
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, delay: 0.1 }}
-              {...hoverFx}
-            >
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-indigo-700">
-                    <Target className="h-5 w-5" />
+            {/* Manage Categories */}
+            <motion.div {...stagger(9)}>
+              <GlassCard className="p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Target className="h-4 w-4 text-indigo-500" />
+                  <h2 className="font-semibold text-gray-700 text-sm">
+                    Manage Categories
+                  </h2>
+                </div>
+                <div className="flex gap-2 mb-3">
+                  <input
+                    placeholder="New category name"
+                    value={newCat}
+                    maxLength={MAX_CATEGORY_NAME_LEN}
+                    className="flex-1 px-3 py-2.5 rounded-xl bg-white/60 border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all"
+                    onChange={(e) => {
+                      setNewCat(e.target.value);
+                      if (catError) setCatError("");
+                    }}
+                  />
+                  <GradBtn onClick={addCategory}>Add</GradBtn>
+                </div>
+                {catError ? (
+                  <p className="mb-2 text-xs text-red-500">{catError}</p>
+                ) : (
+                  <p className="mb-2 text-xs text-gray-400">
+                    Up to {MAX_CATEGORIES} categories.
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {categories.map((c) => (
+                    <motion.span
+                      key={c}
+                      layout
+                      className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border"
+                      style={{
+                        background: `${colorFor(c)}18`,
+                        borderColor: `${colorFor(c)}35`,
+                        color: colorFor(c),
+                      }}
+                    >
+                      {c}
+                      {c !== "Other" && (
+                        <button
+                          onClick={() => deleteCategory(c)}
+                          className="hover:opacity-60 transition-opacity ml-0.5"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </motion.span>
+                  ))}
+                </div>
+              </GlassCard>
+            </motion.div>
+
+            {/* How to use */}
+            <div className="mt-2">
+              <TipsDialog />
+            </div>
+          </div>
+
+          {/* ══ RIGHT COLUMN ══ */}
+          <div className="space-y-6">
+            {/* Donut chart */}
+            <motion.div {...stagger(2)}>
+              <GlassCard className="p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <TrendingUp className="h-4 w-4 text-indigo-500" />
+                  <h2 className="font-semibold text-gray-700 text-sm">
+                    By Category
+                  </h2>
+                </div>
+                {totals.byCat.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10">
+                    <div className="text-4xl mb-2">📊</div>
+                    <p className="text-xs text-gray-400">
+                      Add expenses to see breakdown.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="h-48">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={totals.byCat}
+                            dataKey="value"
+                            nameKey="name"
+                            innerRadius={55}
+                            outerRadius={80}
+                            paddingAngle={2}
+                          >
+                            {totals.byCat.map((entry) => (
+                              <Cell
+                                key={entry.name}
+                                fill={colorFor(entry.name)}
+                              />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={(v) =>
+                              fmt(
+                                Number(v),
+                                selectedCurrency.code,
+                                selectedCurrency.locale,
+                              )
+                            }
+                            contentStyle={{
+                              borderRadius: 12,
+                              border: "none",
+                              boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {totals.byCat.map((entry) => {
+                        const pct =
+                          totals.totalExp > 0
+                            ? ((entry.value / totals.totalExp) * 100).toFixed(1)
+                            : "0.0";
+                        return (
+                          <div
+                            key={entry.name}
+                            className="flex items-center justify-between text-xs"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+                                style={{ background: colorFor(entry.name) }}
+                              />
+                              <span className="text-gray-600 truncate">
+                                {entry.name}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0 ml-2">
+                              <span className="text-gray-500">
+                                {fmt(
+                                  entry.value,
+                                  selectedCurrency.code,
+                                  selectedCurrency.locale,
+                                )}
+                              </span>
+                              <span className="w-10 text-right font-semibold text-gray-700">
+                                {pct}%
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </GlassCard>
+            </motion.div>
+
+            {/* Category Budgets */}
+            <motion.div {...stagger(3)}>
+              <GlassCard className="p-5">
+                <div className="flex items-center gap-2 mb-1">
+                  <Target className="h-4 w-4 text-indigo-500" />
+                  <h2 className="font-semibold text-gray-700 text-sm">
                     Category Budgets
-                    {categories.some((c) => {
-                      const spent =
-                        totals.byCat.find((x) => x.name === c)?.value || 0;
-                      const bud = Number(catBudgets[c]) || 0;
-                      return bud > 0 && spent > bud;
-                    }) && (
-                      <span className="ml-auto text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-600 border border-red-200">
-                        Over budget
-                      </span>
-                    )}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {categories.map((c) => {
-                      const spent =
-                        totals.byCat.find((x) => x.name === c)?.value || 0;
-                      const bud = Number(catBudgets[c]) || 0;
-                      const diff = bud - spent;
-                      const isOver = bud > 0 && diff < 0;
-                      const pct =
-                        bud > 0 ? Math.min((spent / bud) * 100, 100) : 0;
-                      return (
-                        <div key={c} className="space-y-1">
-                          {/* Name + status */}
-                          <div className="flex items-center gap-2">
+                  </h2>
+                  {anyOverBudget && (
+                    <span className="ml-auto text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-500 border border-red-200">
+                      Over budget
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 mb-4">
+                  Set spending limits per category
+                </p>
+                <div className="space-y-5">
+                  {categories.map((c) => {
+                    const spent =
+                      totals.byCat.find((x) => x.name === c)?.value || 0;
+                    const bud = Number(catBudgets[c]) || 0;
+                    const diff = bud - spent;
+                    const isOver = bud > 0 && diff < 0;
+                    const pct =
+                      bud > 0 ? Math.min((spent / bud) * 100, 100) : 0;
+                    return (
+                      <div key={c} className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
                             <span
-                              className="inline-block h-2 w-2 rounded-full shrink-0"
+                              className="inline-block h-2 w-2 rounded-full"
                               style={{ background: colorFor(c) }}
                             />
-                            <span className="flex-1 text-sm font-medium text-gray-700">
+                            <span className="text-xs font-medium text-gray-700">
                               {c}
                             </span>
-                            {isOver && (
-                              <span className="text-xs font-medium text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-full">
-                                {fmt(
-                                  Math.abs(diff),
-                                  selectedCurrency.code,
-                                  selectedCurrency.locale,
-                                )}{" "}
-                                over
-                              </span>
-                            )}
-                            {!isOver && bud > 0 && (
-                              <span className="text-xs text-gray-400">
-                                {fmt(
-                                  diff,
-                                  selectedCurrency.code,
-                                  selectedCurrency.locale,
-                                )}{" "}
-                                left
-                              </span>
-                            )}
                           </div>
-                          {/* Input + spent */}
-                          <div className="grid grid-cols-5 items-center gap-2">
-                            <div className="col-span-3">
-                              <Input
-                                inputMode="numeric"
-                                placeholder={`Budget (${selectedCurrency.code})`}
-                                value={catBudgets[c] ?? ""}
-                                onChange={(e) =>
-                                  setBudget(
-                                    c,
-                                    e.target.value.replace(/[^0-9]/g, ""),
-                                  )
-                                }
-                                className={
-                                  isOver
-                                    ? "border-red-300 focus:border-red-400"
-                                    : ""
-                                }
+                          {isOver ? (
+                            <span className="text-[10px] font-medium text-red-500">
+                              {fmt(
+                                Math.abs(diff),
+                                selectedCurrency.code,
+                                selectedCurrency.locale,
+                              )}{" "}
+                              over
+                            </span>
+                          ) : bud > 0 ? (
+                            <span className="text-[10px] text-gray-400">
+                              {fmt(
+                                diff,
+                                selectedCurrency.code,
+                                selectedCurrency.locale,
+                              )}{" "}
+                              left
+                            </span>
+                          ) : null}
+                        </div>
+                        <input
+                          inputMode="numeric"
+                          placeholder={`Budget (${selectedCurrency.code})`}
+                          value={catBudgets[c] ?? ""}
+                          className={`w-full px-3 py-2 rounded-xl bg-white/60 border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all ${isOver ? "border-red-200" : "border-gray-200"}`}
+                          onChange={(e) =>
+                            setBudget(c, e.target.value.replace(/[^0-9]/g, ""))
+                          }
+                        />
+                        {bud > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${pct}%` }}
+                                transition={{ duration: 0.6 }}
+                                className={`h-1.5 rounded-full ${isOver ? "bg-red-400" : pct > 80 ? "bg-orange-400" : "bg-gradient-to-r from-indigo-400 to-cyan-400"}`}
                               />
                             </div>
-                            <div className="col-span-2 text-xs text-gray-400 text-right">
-                              {bud > 0
-                                ? `${fmt(spent, selectedCurrency.code, selectedCurrency.locale)} spent`
-                                : "no budget set"}
-                            </div>
+                            <span className="text-[10px] text-gray-400 shrink-0">
+                              {fmt(
+                                spent,
+                                selectedCurrency.code,
+                                selectedCurrency.locale,
+                              )}{" "}
+                              spent
+                            </span>
                           </div>
-                          {/* Progress bar */}
-                          {bud > 0 && (
-                            <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
-                              <div
-                                className={`h-1.5 rounded-full transition-all duration-500 ${isOver ? "bg-red-500" : pct > 80 ? "bg-orange-400" : "bg-indigo-500"}`}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                          )}
+                        )}
+                        {bud === 0 && (
+                          <p className="text-[10px] text-gray-300">
+                            no budget set
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </GlassCard>
+            </motion.div>
+
+            {/* Savings Goals summary */}
+            {savingsGoals.length > 0 && (
+              <motion.div {...stagger(4)}>
+                <GlassCard className="p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <PiggyBank className="h-4 w-4 text-green-500" />
+                    <h2 className="font-semibold text-gray-700 text-sm">
+                      Goals Overview
+                    </h2>
+                  </div>
+                  <div className="space-y-3">
+                    {savingsGoals.map((goal) => {
+                      const pct =
+                        (goal.currentAmount / goal.targetAmount) * 100;
+                      return (
+                        <div key={goal.id}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-medium text-gray-700 truncate">
+                              {goal.name}
+                            </span>
+                            <span className="text-xs text-indigo-500 font-semibold shrink-0 ml-2">
+                              {pct.toFixed(0)}%
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${Math.min(pct, 100)}%` }}
+                              transition={{ duration: 0.6 }}
+                              className={`h-1.5 rounded-full ${pct >= 100 ? "bg-green-400" : "bg-gradient-to-r from-indigo-400 to-cyan-400"}`}
+                            />
+                          </div>
                         </div>
                       );
                     })}
                   </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* Manage Categories */}
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, delay: 0.15 }}
-              {...hoverFx}
-            >
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-indigo-700">
-                    Manage Categories
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="New category name"
-                      value={newCat}
-                      onChange={(e) => {
-                        setNewCat(e.target.value);
-                        if (catError) setCatError("");
-                      }}
-                      maxLength={MAX_CATEGORY_NAME_LEN}
-                    />
-                    <Button
-                      onClick={addCategory}
-                      className="bg-gradient-to-r from-indigo-500 to-violet-600 text-white border-transparent hover:opacity-95"
-                    >
-                      Add
-                    </Button>
-                  </div>
-                  {catError ? (
-                    <p className="mt-2 text-xs text-red-600">{catError}</p>
-                  ) : (
-                    <p className="mt-2 text-xs text-gray-500">
-                      You can have up to {MAX_CATEGORIES} categories.
-                    </p>
-                  )}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {categories.map((c) => (
-                      <span
-                        key={c}
-                        className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium text-slate-700"
-                        style={{
-                          background: `${colorFor(c)}20`,
-                          borderColor: `${colorFor(c)}40`,
-                        }}
-                      >
-                        {c}
-                        {c !== "Other" && (
-                          <button
-                            title="Delete category"
-                            onClick={() => deleteCategory(c)}
-                            className="ml-1 rounded p-0.5 hover:bg-white/50"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </span>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+                </GlassCard>
+              </motion.div>
+            )}
           </div>
         </div>
-
-        <div className="mt-6">
-          <TipsDialog />
-        </div>
       </div>
     </div>
   );
 }
 
-function Stat({ label, value }) {
-  return (
-    <div className="rounded-2xl border bg-white p-4 shadow-sm">
-      <div className="text-xs uppercase tracking-wide text-gray-500">
-        {label}
-      </div>
-      <div className="mt-1 text-xl font-semibold">{value}</div>
-    </div>
-  );
-}
-
-function ProgressBar({ percent }) {
-  return (
-    <div className="h-3 w-full rounded-full bg-gray-200">
-      <div
-        className="h-3 rounded-full bg-gradient-to-r from-indigo-500 to-violet-600"
-        style={{ width: `${Math.min(percent, 100)}%` }}
-      />
-    </div>
-  );
-}
-
-function TipsDialog() {
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button variant="outline">How to use</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="text-indigo-700">Quick Start</DialogTitle>
-          <DialogDescription asChild>
-            <div className="space-y-3 text-gray-600">
-              <p>
-                <strong>🌍 Multi-Currency Support:</strong> Click the globe icon
-                to select your preferred currency.
-              </p>
-              <p>
-                <strong>📅 Date Selection:</strong> Choose from preset months or
-                select "Custom Period" for any date range. Your selection will
-                be remembered.
-              </p>
-              <p>
-                <strong>💰 Getting Started:</strong> 1) Select your currency and
-                time period. 2) Add income sources. 3) Set category budgets
-                (optional). 4) Add expenses.
-              </p>
-              <p>
-                <strong>🎯 Savings Goals:</strong> Set financial targets with
-                target dates and track your progress. Use the Add / Withdraw
-                buttons to update amounts.
-              </p>
-              <p>
-                <strong>💾 Data Persistence:</strong> Your data is saved to your
-                browser and (if signed in) to your account. Use{" "}
-                <strong>Export Expenses</strong> to download a CSV.
-              </p>
-              <p>
-                <strong>💡 Tips:</strong> Budget bars turn orange at 80% and red
-                when over limit. Your currency and date preferences are
-                automatically saved.
-              </p>
-            </div>
-          </DialogDescription>
-        </DialogHeader>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
+/* ── Savings Goal Card ── */
 function SavingsGoalCard({
   goal,
   onAddMoney,
@@ -1614,65 +1639,62 @@ function SavingsGoalCard({
   const isOverdue = daysRemaining < 0;
   const isCompleted = goal.currentAmount >= goal.targetAmount;
 
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case "high":
-        return "text-red-600 bg-red-50 border-red-200";
-      case "medium":
-        return "text-orange-600 bg-orange-50 border-orange-200";
-      case "low":
-        return "text-green-600 bg-green-50 border-green-200";
-      default:
-        return "text-gray-600 bg-gray-50 border-gray-200";
-    }
-  };
-
-  const getStatusColor = () => {
-    if (isCompleted) return "text-green-600 bg-green-50 border-green-200";
-    if (isOverdue) return "text-red-600 bg-red-50 border-red-200";
-    if (daysRemaining <= 7)
-      return "text-orange-600 bg-orange-50 border-orange-200";
-    return "text-blue-600 bg-blue-50 border-blue-200";
-  };
-
-  const getStatusText = () => {
-    if (isCompleted) return "Completed! 🎉";
-    if (isOverdue) return `${Math.abs(daysRemaining)} days overdue`;
-    if (daysRemaining === 0) return "Due today!";
-    if (daysRemaining === 1) return "Due tomorrow";
-    return `${daysRemaining} days left`;
-  };
+  const priorityStyle =
+    {
+      high: "text-red-500 bg-red-50 border-red-200",
+      medium: "text-orange-500 bg-orange-50 border-orange-200",
+      low: "text-green-500 bg-green-50 border-green-200",
+    }[goal.priority] || "";
+  const statusStyle = isCompleted
+    ? "text-green-500 bg-green-50 border-green-200"
+    : isOverdue
+      ? "text-red-500 bg-red-50 border-red-200"
+      : daysRemaining <= 7
+        ? "text-orange-500 bg-orange-50 border-orange-200"
+        : "text-blue-500 bg-blue-50 border-blue-200";
+  const statusText = isCompleted
+    ? "Completed! 🎉"
+    : isOverdue
+      ? `${Math.abs(daysRemaining)}d overdue`
+      : daysRemaining === 0
+        ? "Due today!"
+        : `${daysRemaining}d left`;
 
   return (
-    <div className="border rounded-lg p-4 bg-white hover:shadow-md transition-shadow">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      className="p-4 rounded-2xl bg-white/50 border border-gray-100 hover:shadow-md transition-shadow"
+    >
       <div className="flex items-start justify-between mb-3">
-        <div className="flex-1">
-          <h3 className="font-semibold text-gray-900 mb-1">{goal.name}</h3>
-          <div className="flex items-center gap-2 mb-2">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold text-gray-800 truncate mb-1.5">
+            {goal.name}
+          </h3>
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span
-              className={`px-2 py-1 text-xs font-medium rounded-full border ${getPriorityColor(goal.priority)}`}
+              className={`px-2 py-0.5 text-[10px] font-medium rounded-full border ${priorityStyle}`}
             >
-              {goal.priority.charAt(0).toUpperCase() + goal.priority.slice(1)}{" "}
-              Priority
+              {goal.priority.charAt(0).toUpperCase() + goal.priority.slice(1)}
             </span>
             <span
-              className={`px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor()}`}
+              className={`px-2 py-0.5 text-[10px] font-medium rounded-full border ${statusStyle}`}
             >
-              {getStatusText()}
+              {statusText}
             </span>
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
+        <button
           onClick={onDelete}
-          className="text-gray-400 hover:text-red-600"
+          className="text-gray-200 hover:text-red-400 transition-colors ml-2 shrink-0"
         >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
       </div>
+
       <div className="mb-3">
-        <div className="flex justify-between text-sm text-gray-600 mb-1">
+        <div className="flex justify-between text-xs text-gray-500 mb-1">
           <span>
             {fmt(
               goal.currentAmount,
@@ -1688,35 +1710,91 @@ function SavingsGoalCard({
             )}
           </span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
-          <div
-            className={`h-2 rounded-full transition-all duration-300 ${isCompleted ? "bg-green-500" : "bg-blue-500"}`}
-            style={{ width: `${Math.min(progress, 100)}%` }}
+        <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.min(progress, 100)}%` }}
+            transition={{ duration: 0.6 }}
+            className={`h-2 rounded-full ${isCompleted ? "bg-green-400" : "bg-gradient-to-r from-indigo-400 to-cyan-400"}`}
           />
         </div>
-        <div className="text-xs text-gray-500 mt-1">
+        <p className="text-[10px] text-gray-400 mt-1">
           {progress.toFixed(1)}% complete
-        </div>
+        </p>
       </div>
+
       <div className="flex gap-2">
-        <Button
-          variant="outline"
-          size="sm"
+        <button
           onClick={onAddMoney}
-          className="flex-1 text-xs"
           disabled={isCompleted}
+          className="flex-1 py-1.5 rounded-xl border border-indigo-200 text-xs text-indigo-500 hover:bg-indigo-50 transition-colors disabled:opacity-40"
         >
-          + Add Money
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
+          + Add
+        </button>
+        <button
           onClick={onWithdraw}
-          className="flex-1 text-xs"
+          className="flex-1 py-1.5 rounded-xl border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 transition-colors"
         >
           − Withdraw
-        </Button>
+        </button>
       </div>
-    </div>
+    </motion.div>
+  );
+}
+
+/* ── Tips dialog ── */
+function TipsDialog() {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gray-200/60 bg-white/70 backdrop-blur-sm text-sm text-gray-500 shadow-sm hover:bg-white transition-colors"
+        >
+          <HelpCircle className="h-4 w-4" />
+          How to use
+        </motion.button>
+      </DialogTrigger>
+      <DialogContent className="rounded-2xl">
+        <DialogHeader>
+          <DialogTitle className="text-indigo-600">
+            Quick Start Guide
+          </DialogTitle>
+          <DialogDescription asChild>
+            <div className="space-y-3 text-gray-600 text-sm mt-2">
+              <p>
+                <strong>🌍 Currency:</strong> Click the currency selector in the
+                header to switch currencies.
+              </p>
+              <p>
+                <strong>📅 Period:</strong> Choose a month or "Custom Period"
+                for any date range.
+              </p>
+              <p>
+                <strong>💰 Getting started:</strong> Add income sources → set
+                budgets → log expenses daily.
+              </p>
+              <p>
+                <strong>🎯 Goals:</strong> Track savings targets with progress
+                bars. Use Add/Withdraw to update.
+              </p>
+              <p>
+                <strong>📊 Charts:</strong> The donut chart updates as you add
+                expenses.
+              </p>
+              <p>
+                <strong>💾 Data:</strong> Saved to your browser and account.
+                Export CSV anytime.
+              </p>
+              <p>
+                <strong>🔴 Budgets:</strong> Bars turn orange at 80% and red
+                when over limit.
+              </p>
+            </div>
+          </DialogDescription>
+        </DialogHeader>
+      </DialogContent>
+    </Dialog>
   );
 }
