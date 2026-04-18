@@ -1,13 +1,13 @@
 // src/App.jsx
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 // eslint-disable-next-line no-unused-vars
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 import useAuth from "@/hooks/useAuth";
 import useMonthData from "@/hooks/useMonthData";
 import useDateSelection from "@/hooks/useDateSelection";
 import { useCurrency } from "@/hooks/useCurrency.jsx";
-import { fmt, monthKey, buildCSV, periodKey } from "@/lib/utils";
+import { fmt, buildCSV, periodKey } from "@/lib/utils";
 import {
   DEFAULT_CATEGORIES,
   MAX_CATEGORIES,
@@ -45,6 +45,8 @@ import {
   Wallet2,
   Target,
   X,
+  AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
@@ -61,65 +63,251 @@ function colorFor(name) {
   return COLORS[h % COLORS.length];
 }
 
+/* ─────────────────────────────────────────────
+   Toast notification system
+───────────────────────────────────────────── */
+function useToast() {
+  const [toasts, setToasts] = useState([]);
+
+  const addToast = useCallback((message, type = "error") => {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 3500);
+  }, []);
+
+  return { toasts, addToast };
+}
+
+function ToastContainer({ toasts }) {
+  return (
+    <div className="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none">
+      <AnimatePresence>
+        {toasts.map((t) => (
+          <motion.div
+            key={t.id}
+            initial={{ opacity: 0, x: 60 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 60 }}
+            transition={{ duration: 0.22 }}
+            className={`pointer-events-auto flex items-center gap-2 rounded-xl border px-4 py-3 text-sm shadow-lg
+              ${
+                t.type === "error"
+                  ? "bg-red-50 border-red-200 text-red-800"
+                  : "bg-green-50 border-green-200 text-green-800"
+              }`}
+          >
+            {t.type === "error" ? (
+              <AlertCircle className="h-4 w-4 shrink-0" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+            )}
+            {t.message}
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Confirm dialog (replaces confirm())
+───────────────────────────────────────────── */
+function ConfirmDialog({
+  open,
+  title,
+  description,
+  onConfirm,
+  onCancel,
+  confirmLabel = "Delete",
+  confirmClassName = "",
+}) {
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onCancel?.();
+      }}
+    >
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-gray-800">{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <div className="flex justify-end gap-2 mt-2">
+          <Button variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => onConfirm?.()}
+            className={
+              confirmClassName ||
+              "bg-red-600 hover:bg-red-700 text-white border-transparent"
+            }
+          >
+            {confirmLabel}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Amount input dialog (replaces prompt())
+───────────────────────────────────────────── */
+function AmountInputDialog({
+  open,
+  title,
+  description,
+  currency,
+  onConfirm,
+  onCancel,
+}) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState("");
+
+  // Reset state when dialog opens
+  useEffect(() => {
+    if (open) {
+      setValue("");
+      setError("");
+    }
+  }, [open]);
+
+  function handleConfirm() {
+    const num = Number(value);
+    if (!value || isNaN(num) || num <= 0) {
+      setError("Please enter a valid amount greater than 0.");
+      return;
+    }
+    onConfirm(num);
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onCancel();
+      }}
+    >
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-gray-800">{title}</DialogTitle>
+          {description && <DialogDescription>{description}</DialogDescription>}
+        </DialogHeader>
+        <div className="mt-2 space-y-2">
+          <Label htmlFor="amount-input">Amount ({currency?.code})</Label>
+          <Input
+            id="amount-input"
+            autoFocus
+            inputMode="numeric"
+            placeholder="e.g., 5000"
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value.replace(/[^0-9.]/g, ""));
+              if (error) setError("");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleConfirm();
+            }}
+          />
+          {error && <p className="text-xs text-red-600">{error}</p>}
+        </div>
+        <div className="flex justify-end gap-2 mt-3">
+          <Button variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirm}
+            className="bg-gradient-to-r from-indigo-500 to-violet-600 text-white border-transparent hover:opacity-95"
+          >
+            Confirm
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Inline field error helper
+───────────────────────────────────────────── */
+function FieldError({ message }) {
+  if (!message) return null;
+  return (
+    <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
+      <AlertCircle className="h-3 w-3 shrink-0" />
+      {message}
+    </p>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Main component
+───────────────────────────────────────────── */
 export default function ExpenseTracker() {
-  // Use persistent date selection hook
   const {
     selectedMonth,
     setSelectedMonth,
     customDateRange,
     setCustomDateRange,
   } = useDateSelection();
-
-  // Use currency hook
   const { selectedCurrency } = useCurrency();
+  const { user, loading } = useAuth();
+  const { toasts, addToast } = useToast();
 
-  // Add new goal form state
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    title: "",
+    description: "",
+    onConfirm: null,
+  });
+
+  // Amount input dialog state
+  const [amountDialog, setAmountDialog] = useState({
+    open: false,
+    title: "",
+    description: "",
+    onConfirm: null,
+  });
+
+  // New goal form
   const [newGoal, setNewGoal] = useState({
     name: "",
     targetAmount: "",
     currentAmount: "",
     targetDate: "",
-    category: "General",
     priority: "medium",
   });
 
-  const { user, loading } = useAuth();
+  // Income form errors
+  const [sourceErrors, setSourceErrors] = useState({});
 
-  // Listen for auth events
+  // Expense form errors
+  const [expErrors, setExpErrors] = useState({});
+
+  // Goal form errors
+  const [goalErrors, setGoalErrors] = useState({});
+
   useEffect(() => {
     const handleAuthError = (event) => {
+      addToast("Sign-in failed. Please try again.", "error");
       console.error("❌ Auth error:", event.detail);
-      // You can show a toast notification here if needed
     };
-
-    const handleAuthSuccess = () => {
-      // You can show a success notification here if needed
-    };
-
     window.addEventListener("auth:error", handleAuthError);
-    window.addEventListener("auth:success", handleAuthSuccess);
+    return () => window.removeEventListener("auth:error", handleAuthError);
+  }, [addToast]);
 
-    return () => {
-      window.removeEventListener("auth:error", handleAuthError);
-      window.removeEventListener("auth:success", handleAuthSuccess);
-    };
-  }, []);
-
-  /* --------------- Month options (last 12) + Custom Period --------------- */
+  /* --------------- Month options --------------- */
   const monthOptions = useMemo(() => {
-    const list = [];
+    const list = [{ key: "custom", label: "Custom Period", isCustom: true }];
     const now = new Date();
-
-    // Add custom period option at the top
-    list.push({ key: "custom", label: "Custom Period", isCustom: true });
-
-    // Add last 12 months
     for (let i = 0; i < 12; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-        2,
-        "0"
-      )}`;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const label = d.toLocaleDateString("en-IN", {
         month: "long",
         year: "numeric",
@@ -129,7 +317,6 @@ export default function ExpenseTracker() {
     return list;
   }, []);
 
-  // Get the actual period key for data storage/retrieval
   const currentPeriodKey = useMemo(() => {
     if (
       selectedMonth === "custom" &&
@@ -141,40 +328,6 @@ export default function ExpenseTracker() {
     return selectedMonth;
   }, [selectedMonth, customDateRange]);
 
-  // Add validation for custom date range
-  const isCustomDateRangeValid = useMemo(() => {
-    if (selectedMonth !== "custom") return true;
-
-    const start = new Date(customDateRange.start);
-    const end = new Date(customDateRange.end);
-
-    return start <= end && start <= new Date();
-  }, [selectedMonth, customDateRange]);
-
-  // Add a helper to get the period display name
-  const getPeriodDisplayName = useMemo(() => {
-    if (
-      selectedMonth === "custom" &&
-      customDateRange.start &&
-      customDateRange.end
-    ) {
-      const start = new Date(customDateRange.start);
-      const end = new Date(customDateRange.end);
-      return `${start.toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-      })} - ${end.toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })}`;
-    }
-
-    const option = monthOptions.find((m) => m.key === selectedMonth);
-    return option ? option.label : "Select Period";
-  }, [selectedMonth, customDateRange, monthOptions]);
-
-  // Loads + saves month data automatically (local + cloud if signed in)
   const { state, setState, totals } = useMonthData(user, currentPeriodKey);
 
   const {
@@ -182,10 +335,9 @@ export default function ExpenseTracker() {
     expenses = [],
     catBudgets = {},
     categories = DEFAULT_CATEGORIES,
-    savingsGoals = [], // Add this line
+    savingsGoals = [],
   } = state;
 
-  // Forms
   const [source, setSource] = useState({ name: "Salary", amount: "" });
   const [exp, setExp] = useState({
     date: new Date().toISOString().slice(0, 10),
@@ -193,43 +345,59 @@ export default function ExpenseTracker() {
     description: "",
     amount: "",
   });
-
-  // Category manager
   const [newCat, setNewCat] = useState("");
   const [catError, setCatError] = useState("");
 
-  // Show loading state while checking authentication
   if (loading) {
     return (
       <div className="min-h-screen w-full bg-gradient-to-br from-indigo-50 via-white to-sky-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4" />
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
     );
   }
 
-  // Show authentication page if user is not logged in
-  if (!user) {
-    return <AuthPage />;
+  if (!user) return <AuthPage />;
+
+  /* ── Helpers ── */
+  function openConfirm({ title, description, onConfirm }) {
+    setConfirmDialog({ open: true, title, description, onConfirm });
+  }
+  function closeConfirm() {
+    setConfirmDialog({
+      open: false,
+      title: "",
+      description: "",
+      onConfirm: null,
+    });
+  }
+  function openAmountInput({ title, description, onConfirm }) {
+    setAmountDialog({ open: true, title, description, onConfirm });
+  }
+  function closeAmountInput() {
+    setAmountDialog({
+      open: false,
+      title: "",
+      description: "",
+      onConfirm: null,
+    });
   }
 
-  /* ---------------- Actions ---------------- */
+  /* ── Income actions ── */
   function addIncomeSource() {
+    const errors = {};
     const amt = Number(source.amount);
-    if (!source.name.trim()) {
-      alert("Please enter a source name");
+    if (!source.name.trim()) errors.name = "Please enter a source name.";
+    if (isNaN(amt) || amt < 0) errors.amount = "Please enter a valid amount.";
+    else if (amt > 10000000)
+      errors.amount = "Amount cannot exceed ₹10,000,000.";
+    if (Object.keys(errors).length) {
+      setSourceErrors(errors);
       return;
     }
-    if (isNaN(amt) || amt < 0) {
-      alert("Please enter a valid amount");
-      return;
-    }
-    if (amt > 10000000) {
-      alert("Amount cannot exceed ₹10,000,000");
-      return;
-    }
+    setSourceErrors({});
     setState((s) => ({
       ...s,
       incomeSources: [
@@ -238,49 +406,40 @@ export default function ExpenseTracker() {
       ],
     }));
     setSource({ name: "", amount: "" });
+    addToast("Income source added!", "success");
   }
 
   function removeIncomeSource(id) {
-    setState((s) => ({
-      ...s,
-      incomeSources: (s.incomeSources || []).filter((i) => i.id !== id),
-    }));
+    openConfirm({
+      title: "Remove income source?",
+      description: "This will be permanently removed from this period.",
+      onConfirm: () => {
+        setState((s) => ({
+          ...s,
+          incomeSources: (s.incomeSources || []).filter((i) => i.id !== id),
+        }));
+        addToast("Income source removed.", "success");
+        closeConfirm();
+      },
+    });
   }
 
+  /* ── Expense actions ── */
   function addExpense() {
+    const errors = {};
     const amt = Number(exp.amount);
-    if (!exp.date) {
-      alert("Please select a date");
+    if (!exp.date) errors.date = "Please select a date.";
+    else if (new Date(exp.date) > new Date())
+      errors.date = "Cannot add expenses for future dates.";
+    if (!exp.category) errors.category = "Please select a category.";
+    if (isNaN(amt) || amt <= 0) errors.amount = "Please enter a valid amount.";
+    else if (amt > selectedCurrency.maxAmount)
+      errors.amount = `Amount cannot exceed ${fmt(selectedCurrency.maxAmount, selectedCurrency.code, selectedCurrency.locale)}.`;
+    if (Object.keys(errors).length) {
+      setExpErrors(errors);
       return;
     }
-    if (!exp.category) {
-      alert("Please select a category");
-      return;
-    }
-    if (isNaN(amt) || amt <= 0) {
-      alert("Please enter a valid amount");
-      return;
-    }
-
-    // Validate amount
-    if (amt > selectedCurrency.maxAmount) {
-      alert(
-        `Amount cannot exceed ${fmt(
-          selectedCurrency.maxAmount,
-          selectedCurrency.code,
-          selectedCurrency.locale
-        )}`
-      );
-      return;
-    }
-
-    // Validate date (not in future)
-    const today = new Date();
-    const expenseDate = new Date(exp.date);
-    if (expenseDate > today) {
-      alert("Cannot add expenses for future dates");
-      return;
-    }
+    setExpErrors({});
     setState((s) => ({
       ...s,
       expenses: [
@@ -294,24 +453,30 @@ export default function ExpenseTracker() {
       description: "",
       amount: "",
     });
+    addToast("Expense added!", "success");
   }
 
   function removeExpense(id) {
-    setState((s) => ({
-      ...s,
-      expenses: (s.expenses || []).filter((e) => e.id !== id),
-    }));
+    openConfirm({
+      title: "Delete expense?",
+      description: "This expense will be permanently deleted.",
+      onConfirm: () => {
+        setState((s) => ({
+          ...s,
+          expenses: (s.expenses || []).filter((e) => e.id !== id),
+        }));
+        addToast("Expense deleted.", "success");
+        closeConfirm();
+      },
+    });
   }
 
   function setBudget(category, value) {
     const amt = Number(value);
     if (amt > selectedCurrency.maxAmount) {
-      alert(
-        `Budget cannot exceed ${fmt(
-          selectedCurrency.maxAmount,
-          selectedCurrency.code,
-          selectedCurrency.locale
-        )}`
+      addToast(
+        `Budget cannot exceed ${fmt(selectedCurrency.maxAmount, selectedCurrency.code, selectedCurrency.locale)}.`,
+        "error",
       );
       return;
     }
@@ -345,9 +510,10 @@ export default function ExpenseTracker() {
     a.download = `expenses-${selectedMonth}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    addToast("CSV exported!", "success");
   }
 
-  /* ------------- Category manager helpers ------------- */
+  /* ── Category actions ── */
   function validateCategoryName(nameRaw) {
     const name = (nameRaw || "").trim();
     if (!name) return "Enter a category name.";
@@ -379,57 +545,52 @@ export default function ExpenseTracker() {
     }));
     setNewCat("");
     setCatError("");
+    addToast(`Category "${name}" added!`, "success");
   }
 
   function deleteCategory(name) {
-    if (name === "Other") return; // keep a fallback
-    setState((s) => ({
-      ...s,
-      expenses: (s.expenses || []).map((e) =>
-        e.category === name ? { ...e, category: "Other" } : e
-      ),
-      catBudgets: Object.fromEntries(
-        Object.entries(s.catBudgets || {}).filter(([k]) => k !== name)
-      ),
-      categories: (s.categories || []).filter((c) => c !== name),
-    }));
-    setExp((prev) =>
-      prev.category === name ? { ...prev, category: "Other" } : prev
-    );
+    if (name === "Other") return;
+    openConfirm({
+      title: `Delete "${name}"?`,
+      description: `All expenses in "${name}" will move to "Other". This cannot be undone.`,
+      onConfirm: () => {
+        setState((s) => ({
+          ...s,
+          expenses: (s.expenses || []).map((e) =>
+            e.category === name ? { ...e, category: "Other" } : e,
+          ),
+          catBudgets: Object.fromEntries(
+            Object.entries(s.catBudgets || {}).filter(([k]) => k !== name),
+          ),
+          categories: (s.categories || []).filter((c) => c !== name),
+        }));
+        setExp((prev) =>
+          prev.category === name ? { ...prev, category: "Other" } : prev,
+        );
+        addToast(`Category "${name}" deleted.`, "success");
+        closeConfirm();
+      },
+    });
   }
 
-  /* ---------------- Actions ---------------- */
-
-  // Add savings goal functions
+  /* ── Savings goal actions ── */
   function addSavingsGoal() {
-    if (!newGoal.name.trim()) {
-      alert("Please enter a goal name");
-      return;
-    }
-
+    const errors = {};
     const targetAmt = Number(newGoal.targetAmount);
     const currentAmt = Number(newGoal.currentAmount);
-
-    if (isNaN(targetAmt) || targetAmt <= 0) {
-      alert("Please enter a valid target amount");
+    if (!newGoal.name.trim()) errors.name = "Please enter a goal name.";
+    if (isNaN(targetAmt) || targetAmt <= 0)
+      errors.targetAmount = "Please enter a valid target amount.";
+    if (isNaN(currentAmt) || currentAmt < 0)
+      errors.currentAmount = "Please enter a valid current amount.";
+    else if (currentAmt > targetAmt)
+      errors.currentAmount = "Current amount cannot exceed target amount.";
+    if (!newGoal.targetDate) errors.targetDate = "Please select a target date.";
+    if (Object.keys(errors).length) {
+      setGoalErrors(errors);
       return;
     }
-
-    if (isNaN(currentAmt) || currentAmt < 0) {
-      alert("Please enter a valid current amount");
-      return;
-    }
-
-    if (currentAmt > targetAmt) {
-      alert("Current amount cannot exceed target amount");
-      return;
-    }
-
-    if (!newGoal.targetDate) {
-      alert("Please select a target date");
-      return;
-    }
-
+    setGoalErrors({});
     const goal = {
       id: crypto.randomUUID(),
       name: newGoal.name.trim(),
@@ -439,48 +600,110 @@ export default function ExpenseTracker() {
       priority: newGoal.priority,
       createdAt: new Date().toISOString(),
     };
-
     setState((s) => ({
       ...s,
       savingsGoals: [goal, ...(s.savingsGoals || [])],
     }));
-
-    // Reset form
     setNewGoal({
       name: "",
       targetAmount: "",
       currentAmount: "",
       targetDate: "",
-      category: "General",
       priority: "medium",
     });
+    addToast("Savings goal added!", "success");
   }
 
   function updateSavingsGoal(id, updates) {
     setState((s) => ({
       ...s,
       savingsGoals: (s.savingsGoals || []).map((goal) =>
-        goal.id === id ? { ...goal, ...updates } : goal
+        goal.id === id ? { ...goal, ...updates } : goal,
       ),
     }));
   }
 
-  function removeSavingsGoal(id) {
-    if (confirm("Are you sure you want to delete this savings goal?")) {
-      setState((s) => ({
-        ...s,
-        savingsGoals: (s.savingsGoals || []).filter((goal) => goal.id !== id),
-      }));
-    }
+  function removeSavingsGoal(id, goalName) {
+    openConfirm({
+      title: `Delete "${goalName}"?`,
+      description:
+        "Your savings goal and all its progress will be permanently deleted.",
+      onConfirm: () => {
+        setState((s) => ({
+          ...s,
+          savingsGoals: (s.savingsGoals || []).filter((goal) => goal.id !== id),
+        }));
+        addToast("Savings goal deleted.", "success");
+        closeConfirm();
+      },
+    });
   }
 
-  /* ---------------- UI ---------------- */
+  function handleGoalAddMoney(goal) {
+    openAmountInput({
+      title: `Add money to "${goal.name}"`,
+      description: `Current: ${fmt(goal.currentAmount, selectedCurrency.code, selectedCurrency.locale)} / Target: ${fmt(goal.targetAmount, selectedCurrency.code, selectedCurrency.locale)}`,
+      onConfirm: (amount) => {
+        updateSavingsGoal(goal.id, {
+          currentAmount: Math.min(
+            goal.currentAmount + amount,
+            goal.targetAmount,
+          ),
+        });
+        addToast(
+          `Added ${fmt(amount, selectedCurrency.code, selectedCurrency.locale)} to "${goal.name}".`,
+          "success",
+        );
+        closeAmountInput();
+      },
+    });
+  }
+
+  function handleGoalWithdraw(goal) {
+    openAmountInput({
+      title: `Withdraw from "${goal.name}"`,
+      description: `Current balance: ${fmt(goal.currentAmount, selectedCurrency.code, selectedCurrency.locale)}`,
+      onConfirm: (amount) => {
+        updateSavingsGoal(goal.id, {
+          currentAmount: Math.max(goal.currentAmount - amount, 0),
+        });
+        addToast(
+          `Withdrew ${fmt(amount, selectedCurrency.code, selectedCurrency.locale)} from "${goal.name}".`,
+          "success",
+        );
+        closeAmountInput();
+      },
+    });
+  }
+
+  /* ── UI ── */
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-indigo-50 via-white to-sky-100 p-6">
+      {/* Toast notifications */}
+      <ToastContainer toasts={toasts} />
+
+      {/* Confirm dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={closeConfirm}
+      />
+
+      {/* Amount input dialog */}
+      <AmountInputDialog
+        open={amountDialog.open}
+        title={amountDialog.title}
+        description={amountDialog.description}
+        currency={selectedCurrency}
+        onConfirm={amountDialog.onConfirm}
+        onCancel={closeAmountInput}
+      />
+
       <div className="mx-auto max-w-5xl">
         {/* Header */}
         <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-nowrap sm:items-end sm:justify-between">
-          {/* left side: title + blurb */}
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-indigo-700 flex items-center gap-2">
               Expense Tracker
@@ -495,9 +718,7 @@ export default function ExpenseTracker() {
             </p>
           </div>
 
-          {/* right side: controls */}
           <div className="flex items-center gap-3 flex-shrink-0 flex-wrap md:flex-nowrap">
-            {/* Month/Custom Period select */}
             <div className="flex flex-col gap-2">
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                 <SelectTrigger className="min-w-[14rem] w-[14rem] h-10 md:h-9">
@@ -512,7 +733,6 @@ export default function ExpenseTracker() {
                 </SelectContent>
               </Select>
 
-              {/* Show custom date range picker when custom is selected */}
               {selectedMonth === "custom" && (
                 <div className="flex items-center gap-2">
                   <div>
@@ -564,14 +784,13 @@ export default function ExpenseTracker() {
               Export Expenses
             </Button>
 
-            {/* Auth buttons already handle their own width; just normalize height */}
             <div className="h-10 md:h-9">
               <AuthButtons className="h-full" />
             </div>
           </div>
         </header>
 
-        {/* Top summary row */}
+        {/* Summary row */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
@@ -594,7 +813,7 @@ export default function ExpenseTracker() {
                     value={fmt(
                       totals.income,
                       selectedCurrency.code,
-                      selectedCurrency.locale
+                      selectedCurrency.locale,
                     )}
                   />
                   <Stat
@@ -602,7 +821,7 @@ export default function ExpenseTracker() {
                     value={fmt(
                       totals.totalExp,
                       selectedCurrency.code,
-                      selectedCurrency.locale
+                      selectedCurrency.locale,
                     )}
                   />
                   <Stat
@@ -610,13 +829,12 @@ export default function ExpenseTracker() {
                     value={fmt(
                       totals.remaining,
                       selectedCurrency.code,
-                      selectedCurrency.locale
+                      selectedCurrency.locale,
                     )}
                   />
                   <Stat label="Budget Used" value={`${totals.util}%`} />
                 </div>
 
-                {/* Add Savings Goals Summary */}
                 {savingsGoals.length > 0 && (
                   <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
                     <h4 className="font-medium text-green-800 mb-2">
@@ -659,6 +877,7 @@ export default function ExpenseTracker() {
             </Card>
           </motion.div>
 
+          {/* Income Sources */}
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
@@ -680,11 +899,14 @@ export default function ExpenseTracker() {
                       <Input
                         placeholder="e.g., Salary, Freelance"
                         value={source.name}
-                        className="h-9 w-full"
-                        onChange={(e) =>
-                          setSource({ ...source, name: e.target.value })
-                        }
+                        className={`h-9 w-full ${sourceErrors.name ? "border-red-400" : ""}`}
+                        onChange={(e) => {
+                          setSource({ ...source, name: e.target.value });
+                          if (sourceErrors.name)
+                            setSourceErrors((p) => ({ ...p, name: "" }));
+                        }}
                       />
+                      <FieldError message={sourceErrors.name} />
                     </div>
                     <div>
                       <Label>Amount ({selectedCurrency.code})</Label>
@@ -692,13 +914,17 @@ export default function ExpenseTracker() {
                         inputMode="numeric"
                         placeholder="e.g., 75000"
                         value={source.amount}
-                        onChange={(e) =>
+                        className={sourceErrors.amount ? "border-red-400" : ""}
+                        onChange={(e) => {
                           setSource({
                             ...source,
                             amount: e.target.value.replace(/[^0-9]/g, ""),
-                          })
-                        }
+                          });
+                          if (sourceErrors.amount)
+                            setSourceErrors((p) => ({ ...p, amount: "" }));
+                        }}
                       />
+                      <FieldError message={sourceErrors.amount} />
                     </div>
                   </div>
 
@@ -742,12 +968,13 @@ export default function ExpenseTracker() {
           </motion.div>
         </div>
 
-        {/* Savings Goals Section */}
+        {/* Savings Goals */}
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.1 }}
           {...hoverFx}
+          className="mt-6"
         >
           <Card>
             <CardHeader>
@@ -759,58 +986,70 @@ export default function ExpenseTracker() {
             <CardContent>
               <div className="grid grid-cols-1 gap-3">
                 {/* Add New Goal Form */}
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-6 md:items-end">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-6 md:items-start">
                   <div>
                     <Label>Goal Name</Label>
                     <Input
                       placeholder="e.g., Emergency Fund"
                       value={newGoal.name}
-                      onChange={(e) =>
-                        setNewGoal({ ...newGoal, name: e.target.value })
-                      }
-                      className="h-9 w-full"
+                      className={`h-9 w-full ${goalErrors.name ? "border-red-400" : ""}`}
+                      onChange={(e) => {
+                        setNewGoal({ ...newGoal, name: e.target.value });
+                        if (goalErrors.name)
+                          setGoalErrors((p) => ({ ...p, name: "" }));
+                      }}
                     />
+                    <FieldError message={goalErrors.name} />
                   </div>
                   <div>
-                    <Label>Target Amount ({selectedCurrency.code})</Label>
+                    <Label>Target ({selectedCurrency.code})</Label>
                     <Input
                       inputMode="numeric"
                       placeholder="e.g., 100000"
                       value={newGoal.targetAmount}
-                      onChange={(e) =>
+                      className={`h-9 w-full ${goalErrors.targetAmount ? "border-red-400" : ""}`}
+                      onChange={(e) => {
                         setNewGoal({
                           ...newGoal,
                           targetAmount: e.target.value.replace(/[^0-9]/g, ""),
-                        })
-                      }
-                      className="h-9 w-full"
+                        });
+                        if (goalErrors.targetAmount)
+                          setGoalErrors((p) => ({ ...p, targetAmount: "" }));
+                      }}
                     />
+                    <FieldError message={goalErrors.targetAmount} />
                   </div>
                   <div>
-                    <Label>Current Amount ({selectedCurrency.code})</Label>
+                    <Label>Current ({selectedCurrency.code})</Label>
                     <Input
                       inputMode="numeric"
                       placeholder="e.g., 25000"
                       value={newGoal.currentAmount}
-                      onChange={(e) =>
+                      className={`h-9 w-full ${goalErrors.currentAmount ? "border-red-400" : ""}`}
+                      onChange={(e) => {
                         setNewGoal({
                           ...newGoal,
                           currentAmount: e.target.value.replace(/[^0-9]/g, ""),
-                        })
-                      }
-                      className="h-9 w-full"
+                        });
+                        if (goalErrors.currentAmount)
+                          setGoalErrors((p) => ({ ...p, currentAmount: "" }));
+                      }}
                     />
+                    <FieldError message={goalErrors.currentAmount} />
                   </div>
                   <div>
                     <Label>Target Date</Label>
                     <Input
                       type="date"
                       value={newGoal.targetDate}
-                      onChange={(e) =>
-                        setNewGoal({ ...newGoal, targetDate: e.target.value })
-                      }
-                      className="h-9 w-full"
+                      className={`h-9 w-full ${goalErrors.targetDate ? "border-red-400" : ""}`}
+                      onChange={(e) => {
+                        setNewGoal({ ...newGoal, targetDate: e.target.value });
+                        if (goalErrors.targetDate)
+                          setGoalErrors((p) => ({ ...p, targetDate: "" }));
+                      }}
                     />
+                    <FieldError message={goalErrors.targetDate} />
                   </div>
                   <div>
                     <Label>Priority</Label>
@@ -830,15 +1069,16 @@ export default function ExpenseTracker() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button
-                    onClick={addSavingsGoal}
-                    className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white border-transparent hover:opacity-95"
-                  >
-                    Add Goal
-                  </Button>
+                  <div className="flex items-end">
+                    <Button
+                      onClick={addSavingsGoal}
+                      className="w-full h-9 bg-gradient-to-r from-green-500 to-emerald-600 text-white border-transparent hover:opacity-95"
+                    >
+                      Add Goal
+                    </Button>
+                  </div>
                 </div>
 
-                {/* Goals List */}
                 {savingsGoals.length === 0 ? (
                   <p className="text-xs text-gray-500 text-center py-4">
                     No savings goals set yet. Start by adding your first goal
@@ -850,8 +1090,9 @@ export default function ExpenseTracker() {
                       <SavingsGoalCard
                         key={goal.id}
                         goal={goal}
-                        onUpdate={updateSavingsGoal}
-                        onDelete={removeSavingsGoal}
+                        onAddMoney={() => handleGoalAddMoney(goal)}
+                        onWithdraw={() => handleGoalWithdraw(goal)}
+                        onDelete={() => removeSavingsGoal(goal.id, goal.name)}
                         selectedCurrency={selectedCurrency}
                       />
                     ))}
@@ -879,27 +1120,36 @@ export default function ExpenseTracker() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-6 md:items-end">
-                  {/* Date */}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-6 md:items-start">
                   <div className="md:col-span-2">
                     <Label htmlFor="date">Date</Label>
                     <Input
                       id="date"
                       type="date"
-                      className="h-10 md:h-9 w-full"
+                      className={`h-10 md:h-9 w-full ${expErrors.date ? "border-red-400" : ""}`}
                       value={exp.date}
-                      onChange={(e) => setExp({ ...exp, date: e.target.value })}
+                      onChange={(e) => {
+                        setExp({ ...exp, date: e.target.value });
+                        if (expErrors.date)
+                          setExpErrors((p) => ({ ...p, date: "" }));
+                      }}
                     />
+                    <FieldError message={expErrors.date} />
                   </div>
 
-                  {/* Category */}
                   <div className="md:col-span-2">
                     <Label>Category</Label>
                     <Select
                       value={exp.category}
-                      onValueChange={(v) => setExp({ ...exp, category: v })}
+                      onValueChange={(v) => {
+                        setExp({ ...exp, category: v });
+                        if (expErrors.category)
+                          setExpErrors((p) => ({ ...p, category: "" }));
+                      }}
                     >
-                      <SelectTrigger className="h-10 md:h-9">
+                      <SelectTrigger
+                        className={`h-10 md:h-9 ${expErrors.category ? "border-red-400" : ""}`}
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -910,27 +1160,29 @@ export default function ExpenseTracker() {
                         ))}
                       </SelectContent>
                     </Select>
+                    <FieldError message={expErrors.category} />
                   </div>
 
-                  {/* Amount */}
                   <div className="md:col-span-2">
                     <Label htmlFor="amount">Amount</Label>
                     <Input
                       id="amount"
                       inputMode="decimal"
-                      className="h-10 md:h-9"
+                      className={`h-10 md:h-9 ${expErrors.amount ? "border-red-400" : ""}`}
                       placeholder="e.g., 1200"
                       value={exp.amount}
-                      onChange={(e) =>
+                      onChange={(e) => {
                         setExp({
                           ...exp,
                           amount: e.target.value.replace(/[^0-9.]/g, ""),
-                        })
-                      }
+                        });
+                        if (expErrors.amount)
+                          setExpErrors((p) => ({ ...p, amount: "" }));
+                      }}
                     />
+                    <FieldError message={expErrors.amount} />
                   </div>
 
-                  {/* Description (full width on desktop row 2) */}
                   <div className="md:col-span-5">
                     <Label htmlFor="desc">Description (optional)</Label>
                     <Input
@@ -944,8 +1196,7 @@ export default function ExpenseTracker() {
                     />
                   </div>
 
-                  {/* Add button (sticks to baseline on desktop) */}
-                  <div className="md:col-span-1">
+                  <div className="md:col-span-1 flex items-end">
                     <Button
                       className="w-full h-10 md:h-9 bg-gradient-to-r from-brand-start to-brand-end text-white border-transparent hover:opacity-95"
                       onClick={addExpense}
@@ -955,7 +1206,7 @@ export default function ExpenseTracker() {
                   </div>
                 </div>
 
-                {/* Mobile list (cards) */}
+                {/* Mobile list */}
                 <div className="mt-6 md:hidden">
                   {expenses.length === 0 ? (
                     <p className="p-4 text-center text-gray-400">
@@ -976,11 +1227,11 @@ export default function ExpenseTracker() {
                               <div className="text-xs text-gray-500">
                                 {new Date(e.date).toLocaleDateString()}
                               </div>
-                              {e.description ? (
+                              {e.description && (
                                 <div className="mt-1 text-xs text-gray-600">
                                   {e.description}
                                 </div>
-                              ) : null}
+                              )}
                             </div>
                             <div className="text-right">
                               <div className="text-sm font-semibold">
@@ -1116,41 +1367,43 @@ export default function ExpenseTracker() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {categories.map((c) => (
-                      <div
-                        key={c}
-                        className="grid grid-cols-5 items-center gap-2"
-                      >
-                        <div className="col-span-2 text-sm">{c}</div>
-                        <div className="col-span-2">
-                          <Input
-                            inputMode="numeric"
-                            placeholder={`Budget (${selectedCurrency.code})`}
-                            value={catBudgets[c] ?? ""}
-                            onChange={(e) =>
-                              setBudget(
-                                c,
-                                e.target.value.replace(/[^0-9]/g, "")
-                              )
-                            }
-                          />
-                        </div>
-                        <div className="text-right text-xs text-gray-500">
-                          {(() => {
-                            const spent =
-                              totals.byCat.find((x) => x.name === c)?.value ||
-                              0;
-                            const bud = Number(catBudgets[c]) || 0;
-                            const diff = bud - spent;
-                            return bud > 0
+                    {categories.map((c) => {
+                      const spent =
+                        totals.byCat.find((x) => x.name === c)?.value || 0;
+                      const bud = Number(catBudgets[c]) || 0;
+                      const diff = bud - spent;
+                      const isOver = bud > 0 && diff < 0;
+                      return (
+                        <div
+                          key={c}
+                          className="grid grid-cols-5 items-center gap-2"
+                        >
+                          <div className="col-span-2 text-sm">{c}</div>
+                          <div className="col-span-2">
+                            <Input
+                              inputMode="numeric"
+                              placeholder={`Budget (${selectedCurrency.code})`}
+                              value={catBudgets[c] ?? ""}
+                              onChange={(e) =>
+                                setBudget(
+                                  c,
+                                  e.target.value.replace(/[^0-9]/g, ""),
+                                )
+                              }
+                            />
+                          </div>
+                          <div
+                            className={`text-right text-xs font-medium ${isOver ? "text-red-600" : "text-gray-500"}`}
+                          >
+                            {bud > 0
                               ? diff >= 0
                                 ? `${fmt(diff)} left`
                                 : `${fmt(Math.abs(diff))} over`
-                              : "";
-                          })()}
+                              : ""}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -1232,9 +1485,7 @@ export default function ExpenseTracker() {
   );
 }
 
-/* -----------------------------
-   Small components
------------------------------- */
+/* ── Small reusable components ── */
 function Stat({ label, value }) {
   return (
     <div className="rounded-2xl border bg-white p-4 shadow-sm">
@@ -1251,7 +1502,7 @@ function ProgressBar({ percent }) {
     <div className="h-3 w-full rounded-full bg-gray-200">
       <div
         className="h-3 rounded-full bg-gradient-to-r from-indigo-500 to-violet-600"
-        style={{ width: `${percent}%` }}
+        style={{ width: `${Math.min(percent, 100)}%` }}
       />
     </div>
   );
@@ -1270,24 +1521,22 @@ function TipsDialog() {
             <div className="space-y-3 text-gray-600">
               <p>
                 <strong>🌍 Multi-Currency Support:</strong> Click the globe icon
-                (🌍) to select your preferred currency. All amounts will
-                automatically format in your chosen currency.
+                to select your preferred currency.
               </p>
               <p>
                 <strong>📅 Date Selection:</strong> Choose from preset months or
                 select "Custom Period" for any date range. Your selection will
-                be remembered when you return.
+                be remembered.
               </p>
               <p>
                 <strong>💰 Getting Started:</strong> 1) Select your currency and
-                time period. 2) Add income sources (salary, freelance, etc.). 3)
-                (Optional) Set category budgets. 4) Add expenses with date,
-                category, and amount.
+                time period. 2) Add income sources. 3) Set category budgets
+                (optional). 4) Add expenses.
               </p>
               <p>
                 <strong>🎯 Savings Goals:</strong> Set financial targets with
-                target dates and track your progress. Add or withdraw money to
-                stay on track.
+                target dates and track your progress. Use the Add / Withdraw
+                buttons to update amounts.
               </p>
               <p>
                 <strong>💾 Data Persistence:</strong> Your data is saved to your
@@ -1295,9 +1544,9 @@ function TipsDialog() {
                 <strong>Export Expenses</strong> to download a CSV.
               </p>
               <p>
-                <strong>💡 Tips:</strong> Budgets show over/under for each
-                category at a glance. Your currency and date preferences are
-                automatically saved.
+                <strong>💡 Tips:</strong> Red "over" text in budgets means
+                you've exceeded that category's limit. Your currency and date
+                preferences are automatically saved.
               </p>
             </div>
           </DialogDescription>
@@ -1307,10 +1556,17 @@ function TipsDialog() {
   );
 }
 
-function SavingsGoalCard({ goal, onUpdate, onDelete, selectedCurrency }) {
+// SavingsGoalCard now receives callbacks instead of doing prompt/confirm itself
+function SavingsGoalCard({
+  goal,
+  onAddMoney,
+  onWithdraw,
+  onDelete,
+  selectedCurrency,
+}) {
   const progress = (goal.currentAmount / goal.targetAmount) * 100;
   const daysRemaining = Math.ceil(
-    (new Date(goal.targetDate) - new Date()) / (1000 * 60 * 60 * 24)
+    (new Date(goal.targetDate) - new Date()) / (1000 * 60 * 60 * 24),
   );
   const isOverdue = daysRemaining < 0;
   const isCompleted = goal.currentAmount >= goal.targetAmount;
@@ -1341,7 +1597,6 @@ function SavingsGoalCard({ goal, onUpdate, onDelete, selectedCurrency }) {
     if (isOverdue) return `${Math.abs(daysRemaining)} days overdue`;
     if (daysRemaining === 0) return "Due today!";
     if (daysRemaining === 1) return "Due tomorrow";
-    if (daysRemaining <= 7) return `${daysRemaining} days left`;
     return `${daysRemaining} days left`;
   };
 
@@ -1352,9 +1607,7 @@ function SavingsGoalCard({ goal, onUpdate, onDelete, selectedCurrency }) {
           <h3 className="font-semibold text-gray-900 mb-1">{goal.name}</h3>
           <div className="flex items-center gap-2 mb-2">
             <span
-              className={`px-2 py-1 text-xs font-medium rounded-full border ${getPriorityColor(
-                goal.priority
-              )}`}
+              className={`px-2 py-1 text-xs font-medium rounded-full border ${getPriorityColor(goal.priority)}`}
             >
               {goal.priority.charAt(0).toUpperCase() + goal.priority.slice(1)}{" "}
               Priority
@@ -1369,36 +1622,33 @@ function SavingsGoalCard({ goal, onUpdate, onDelete, selectedCurrency }) {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => onDelete(goal.id)}
+          onClick={onDelete}
           className="text-gray-400 hover:text-red-600"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
 
-      {/* Progress Bar */}
       <div className="mb-3">
         <div className="flex justify-between text-sm text-gray-600 mb-1">
           <span>
             {fmt(
               goal.currentAmount,
               selectedCurrency.code,
-              selectedCurrency.locale
+              selectedCurrency.locale,
             )}
           </span>
           <span>
             {fmt(
               goal.targetAmount,
               selectedCurrency.code,
-              selectedCurrency.locale
+              selectedCurrency.locale,
             )}
           </span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
           <div
-            className={`h-2 rounded-full transition-all duration-300 ${
-              isCompleted ? "bg-green-500" : "bg-blue-500"
-            }`}
+            className={`h-2 rounded-full transition-all duration-300 ${isCompleted ? "bg-green-500" : "bg-blue-500"}`}
             style={{ width: `${Math.min(progress, 100)}%` }}
           />
         </div>
@@ -1407,24 +1657,11 @@ function SavingsGoalCard({ goal, onUpdate, onDelete, selectedCurrency }) {
         </div>
       </div>
 
-      {/* Quick Update Buttons */}
       <div className="flex gap-2">
         <Button
           variant="outline"
           size="sm"
-          onClick={() => {
-            const amount = prompt(
-              `How much did you add to "${goal.name}"? (${selectedCurrency.code})`
-            );
-            if (amount && !isNaN(Number(amount))) {
-              onUpdate(goal.id, {
-                currentAmount: Math.min(
-                  goal.currentAmount + Number(amount),
-                  goal.targetAmount
-                ),
-              });
-            }
-          }}
+          onClick={onAddMoney}
           className="flex-1 text-xs"
           disabled={isCompleted}
         >
@@ -1433,19 +1670,10 @@ function SavingsGoalCard({ goal, onUpdate, onDelete, selectedCurrency }) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => {
-            const amount = prompt(
-              `How much did you withdraw from "${goal.name}"? (${selectedCurrency.code})`
-            );
-            if (amount && !isNaN(Number(amount))) {
-              onUpdate(goal.id, {
-                currentAmount: Math.max(goal.currentAmount - Number(amount), 0),
-              });
-            }
-          }}
+          onClick={onWithdraw}
           className="flex-1 text-xs"
         >
-          - Withdraw
+          − Withdraw
         </Button>
       </div>
     </div>
