@@ -8,7 +8,7 @@ import {
   handleRedirectResultOnce,
 } from "@/lib/firebase";
 
-export default function AuthButtons({ className = "" }) {
+export default function AuthButtons({ className = "", dark = false }) {
   const [user, setUser] = useState(null);
   const [pending, setPending] = useState(true);
   const [redirecting, setRedirecting] = useState(
@@ -54,11 +54,17 @@ export default function AuthButtons({ className = "" }) {
           onClick={() =>
             googleSignIn().catch((e) => setErr(e?.message || "Sign-in failed"))
           }
-          className="h-9 w-full sm:w-auto whitespace-nowrap"
+          className={`h-9 w-full sm:w-auto whitespace-nowrap ${
+            dark ? "from-indigo-500 to-cyan-500" : ""
+          }`}
         >
           Sign in with Google
         </Button>
-        {err ? <span className="text-xs text-red-600">{err}</span> : null}
+        {err ? (
+          <span className={`text-xs ${dark ? "text-red-400" : "text-red-600"}`}>
+            {err}
+          </span>
+        ) : null}
       </div>
     );
   }
@@ -73,20 +79,32 @@ export default function AuthButtons({ className = "" }) {
           referrerPolicy="no-referrer"
         />
       ) : null}
-      <span className="hidden sm:block truncate max-w-[10rem] text-xs text-gray-600">
+      <span
+        className={`hidden sm:block truncate max-w-[10rem] text-xs ${
+          dark ? "text-gray-300" : "text-gray-600"
+        }`}
+      >
         {user.displayName || user.email}
       </span>
       <Button
         variant="outline"
         size="sm"
-        className="h-9 w-full sm:w-auto shrink-0 whitespace-nowrap"
+        className={`h-9 w-full sm:w-auto shrink-0 whitespace-nowrap ${
+          dark
+            ? "bg-[#252a3d] border-white/10 text-gray-200 hover:bg-white/10"
+            : ""
+        }`}
         onClick={() =>
           signOutUser().catch((e) => setErr(e?.message || "Sign-out failed"))
         }
       >
         Sign out
       </Button>
-      {err ? <span className="text-xs text-red-600">{err}</span> : null}
+      {err ? (
+        <span className={`text-xs ${dark ? "text-red-400" : "text-red-600"}`}>
+          {err}
+        </span>
+      ) : null}
     </div>
   );
 }
