@@ -555,10 +555,10 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast }) {
 
   return (
     <div
-      className={`p-4 rounded-2xl border ${
+      className={`p-4 rounded-2xl border overflow-hidden ${
         dark
           ? "bg-gradient-to-r from-violet-500/20 to-cyan-500/20 border-violet-500/30"
-          : "bg-gradient-to-r from-violet-500 to-cyan-500 border-transparent"
+          : "bg-indigo-500 border-transparent"
       }`}
     >
       <div className="flex items-center justify-between mb-2">
@@ -581,9 +581,9 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast }) {
         )}
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2">
         <input
-          placeholder='e.g. "500 on groceries, 200 on coffee, 1200 for uber yesterday"'
+          placeholder='e.g. "500 on groceries, 200 on coffee"'
           value={text}
           maxLength={MAX_CHARS}
           onChange={(e) => setText(e.target.value)}
