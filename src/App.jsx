@@ -1,6 +1,5 @@
 // src/App.jsx
 import React, { useMemo, useState, useEffect, useCallback } from "react";
-// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from "framer-motion";
 
 import useAuth from "@/hooks/useAuth";
@@ -14,6 +13,7 @@ import {
   MAX_CATEGORY_NAME_LEN,
   COLORS,
 } from "@/lib/constants";
+import { getSpendingInsightsFn, parseExpenseFn } from "@/lib/firebase";
 
 import AuthButtons from "@/components/AuthButtons";
 import AuthPage from "@/components/AuthPage";
@@ -49,17 +49,18 @@ import {
   HelpCircle,
   Sun,
   Moon,
+  Sparkles,
+  Zap,
+  Loader2,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
-/* ── color helper ── */
 function colorFor(name) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return COLORS[h % COLORS.length];
 }
 
-/* ── animation presets ── */
 const fadeUp = {
   initial: { opacity: 0, y: 20 },
   animate: { opacity: 1, y: 0 },
@@ -70,17 +71,11 @@ const stagger = (i) => ({
   transition: { ...fadeUp.transition, delay: i * 0.07 },
 });
 
-/* ─────────────────────────────────────────────
-   Theme context
-───────────────────────────────────────────── */
 const ThemeContext = React.createContext({ dark: false, toggle: () => {} });
 function useTheme() {
   return React.useContext(ThemeContext);
 }
 
-/* ─────────────────────────────────────────────
-   Toast system
-───────────────────────────────────────────── */
 function useToast() {
   const [toasts, setToasts] = useState([]);
   const addToast = useCallback((message, type = "error") => {
@@ -118,18 +113,11 @@ function ToastContainer({ toasts }) {
   );
 }
 
-/* ─────────────────────────────────────────────
-   Theme-aware primitives
-───────────────────────────────────────────── */
 function GlassCard({ children, className = "" }) {
   const { dark } = useTheme();
   return (
     <div
-      className={`rounded-2xl shadow-lg border ${
-        dark
-          ? "bg-[#1e2235]/80 border-white/5 backdrop-blur-sm"
-          : "bg-white/70 border-white/60 backdrop-blur-sm"
-      } ${className}`}
+      className={`rounded-2xl shadow-lg border ${dark ? "bg-[#1e2235]/80 border-white/5 backdrop-blur-sm" : "bg-white/70 border-white/60 backdrop-blur-sm"} ${className}`}
     >
       {children}
     </div>
@@ -137,11 +125,10 @@ function GlassCard({ children, className = "" }) {
 }
 
 function SectionTitle({ icon: Icon, children, iconColor = "text-indigo-500" }) {
-  const IconComponent = Icon;
   const { dark } = useTheme();
   return (
     <div className="flex items-center gap-2 mb-4">
-      <IconComponent className={`h-4 w-4 ${iconColor}`} />
+      <Icon className={`h-4 w-4 ${iconColor}`} />
       <h2
         className={`font-semibold text-sm ${dark ? "text-gray-200" : "text-gray-700"}`}
       >
@@ -159,8 +146,8 @@ function ThemedInput({ className = "", error = false, ...props }) {
       className={`w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all
         ${
           dark
-            ? `bg-[#252a3d] border ${error ? "border-red-500/50" : "border-white/10"} text-gray-200 placeholder-gray-500 [color-scheme:dark]`
-            : `bg-white/60 border ${error ? "border-red-300" : "border-gray-200"} text-gray-800 placeholder-gray-400 [color-scheme:light]`
+            ? `bg-[#252a3d] border ${error ? "border-red-500/50" : "border-white/10"} text-gray-200 placeholder-gray-500`
+            : `bg-white/60 border ${error ? "border-red-300" : "border-gray-200"} text-gray-800 placeholder-gray-400`
         } ${className}`}
     />
   );
@@ -176,7 +163,9 @@ function GradBtn({
   const base =
     variant === "primary"
       ? "bg-gradient-to-r from-indigo-500 to-cyan-500 text-white shadow-md hover:shadow-indigo-500/30 hover:opacity-90"
-      : "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md hover:shadow-green-500/30 hover:opacity-90";
+      : variant === "secondary"
+        ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md hover:shadow-green-500/30 hover:opacity-90"
+        : "bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-md hover:shadow-violet-500/30 hover:opacity-90";
   return (
     <motion.button
       whileHover={{ scale: 1.02 }}
@@ -200,9 +189,6 @@ function FieldError({ message }) {
   );
 }
 
-/* ─────────────────────────────────────────────
-   Confirm dialog
-───────────────────────────────────────────── */
 function ConfirmDialog({
   open,
   title,
@@ -249,9 +235,6 @@ function ConfirmDialog({
   );
 }
 
-/* ─────────────────────────────────────────────
-   Amount input dialog
-───────────────────────────────────────────── */
 function AmountInputDialog({
   open,
   title,
@@ -306,7 +289,6 @@ function AmountInputDialog({
             Amount ({currency?.code})
           </label>
           <ThemedInput
-            id="amount-input"
             autoFocus
             inputMode="numeric"
             placeholder="e.g., 5000"
@@ -336,7 +318,7 @@ function AmountInputDialog({
           </button>
           <button
             onClick={handleConfirm}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white text-sm hover:opacity-90 transition-opacity shadow-md"
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white text-sm hover:opacity-90 shadow-md"
           >
             Confirm
           </button>
@@ -346,9 +328,6 @@ function AmountInputDialog({
   );
 }
 
-/* ─────────────────────────────────────────────
-   Theme toggle button
-───────────────────────────────────────────── */
 function ThemeToggle() {
   const { dark, toggle } = useTheme();
   return (
@@ -356,11 +335,7 @@ function ThemeToggle() {
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
       onClick={toggle}
-      className={`h-9 w-9 rounded-full flex items-center justify-center border transition-colors shadow-sm ${
-        dark
-          ? "bg-[#252a3d] border-white/10 text-yellow-400 hover:bg-white/10"
-          : "bg-white/70 border-gray-200/60 text-gray-600 hover:bg-white"
-      }`}
+      className={`h-9 w-9 rounded-full flex items-center justify-center border transition-colors shadow-sm ${dark ? "bg-[#252a3d] border-white/10 text-yellow-400 hover:bg-white/10" : "bg-white/70 border-gray-200/60 text-gray-600 hover:bg-white"}`}
     >
       <AnimatePresence mode="wait">
         {dark ? (
@@ -389,9 +364,381 @@ function ThemeToggle() {
   );
 }
 
-/* ─────────────────────────────────────────────
-   Main component
-───────────────────────────────────────────── */
+function AIInsightsModal({ open, onClose, insights, loading, error }) {
+  const { dark } = useTheme();
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
+      <DialogContent
+        className={`max-w-lg rounded-2xl ${dark ? "bg-[#1e2235] border-white/10" : ""}`}
+      >
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-violet-400" />
+            <span className={dark ? "text-gray-100" : "text-gray-800"}>
+              AI Spending Insights
+            </span>
+          </DialogTitle>
+          <DialogDescription className={dark ? "text-gray-400" : ""}>
+            Powered by Claude AI — personalized just for you
+          </DialogDescription>
+        </DialogHeader>
+        <div className="mt-2">
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-10 gap-3">
+              <Loader2 className="h-8 w-8 text-violet-400 animate-spin" />
+              <p
+                className={`text-sm ${dark ? "text-gray-400" : "text-gray-500"}`}
+              >
+                Analyzing your spending...
+              </p>
+            </div>
+          )}
+          {error && (
+            <div className="py-6 text-center">
+              <p className="text-red-400 text-sm">{error}</p>
+            </div>
+          )}
+          {insights && !loading && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <div
+                className={`p-4 rounded-2xl border mb-4 ${dark ? "bg-violet-500/10 border-violet-500/20" : "bg-violet-50 border-violet-100"}`}
+              >
+                <p
+                  className={`text-sm leading-relaxed whitespace-pre-wrap ${dark ? "text-gray-200" : "text-gray-700"}`}
+                >
+                  {insights.insights}
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  {
+                    label: "Total Spent",
+                    value: insights.summary?.totalExpenses?.toLocaleString(),
+                  },
+                  {
+                    label: "Remaining",
+                    value: insights.summary?.remaining?.toLocaleString(),
+                  },
+                  {
+                    label: "Savings Rate",
+                    value: `${insights.summary?.savingsRate}%`,
+                  },
+                ].map((s) => (
+                  <div
+                    key={s.label}
+                    className={`p-3 rounded-xl text-center ${dark ? "bg-white/5 border border-white/5" : "bg-gray-50 border border-gray-100"}`}
+                  >
+                    <p
+                      className={`text-xs mb-1 ${dark ? "text-gray-500" : "text-gray-400"}`}
+                    >
+                      {s.label}
+                    </p>
+                    <p
+                      className={`text-sm font-bold ${dark ? "text-gray-100" : "text-gray-800"}`}
+                    >
+                      {s.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {insights.summary?.topCategory && (
+                <p
+                  className={`mt-3 text-xs text-center ${dark ? "text-gray-500" : "text-gray-400"}`}
+                >
+                  Top spending category:{" "}
+                  <span className="font-medium text-violet-400">
+                    {insights.summary.topCategory}
+                  </span>
+                </p>
+              )}
+            </motion.div>
+          )}
+        </div>
+        <div className="flex justify-end mt-2">
+          <button
+            onClick={onClose}
+            className={`px-4 py-2 rounded-xl border text-sm transition-colors ${dark ? "border-white/10 text-gray-400 hover:bg-white/5" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+          >
+            Close
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast }) {
+  const { dark } = useTheme();
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [previews, setPreviews] = useState([]);
+  const [selected, setSelected] = useState({});
+
+  const MAX_CHARS = 300;
+  const MAX_EXPENSES = 5;
+  const remaining = MAX_CHARS - text.length;
+  const isNearLimit = remaining <= 50;
+  const isAtLimit = remaining <= 0;
+
+  async function handleParse() {
+    if (!text.trim() || isAtLimit) return;
+    setLoading(true);
+    setPreviews([]);
+    setSelected({});
+    try {
+      const result = await parseExpenseFn({
+        text,
+        categories,
+        currency: selectedCurrency.code,
+      });
+      const expenses = result.data.expenses;
+      if (!expenses || expenses.length === 0) {
+        addToast("No expenses found. Try 'spent 500 on groceries'", "error");
+        return;
+      }
+      if (expenses.length >= MAX_EXPENSES)
+        addToast(
+          `Showing first ${MAX_EXPENSES} expenses. Add more separately!`,
+          "error",
+        );
+      setPreviews(expenses);
+      const allSelected = {};
+      expenses.forEach((_, i) => {
+        allSelected[i] = true;
+      });
+      setSelected(allSelected);
+    } catch (err) {
+      addToast(
+        err.message || "Could not parse. Try 'spent 500 on food today'",
+        "error",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function toggleSelect(i) {
+    setSelected((prev) => ({ ...prev, [i]: !prev[i] }));
+  }
+
+  function handleConfirm() {
+    const toAdd = previews.filter((_, i) => selected[i]);
+    if (toAdd.length === 0) {
+      addToast("Select at least one expense to add.", "error");
+      return;
+    }
+    toAdd.forEach((exp) => onExpenseAdd(exp));
+    addToast(
+      `${toAdd.length} expense${toAdd.length > 1 ? "s" : ""} added!`,
+      "success",
+    );
+    setText("");
+    setPreviews([]);
+    setSelected({});
+  }
+
+  function handleCancel() {
+    setPreviews([]);
+    setSelected({});
+    setText("");
+  }
+
+  const selectedCount = Object.values(selected).filter(Boolean).length;
+
+  return (
+    <div
+      className={`p-4 rounded-2xl border ${
+        dark
+          ? "bg-gradient-to-r from-violet-500/20 to-cyan-500/20 border-violet-500/30"
+          : "bg-gradient-to-r from-violet-500 to-cyan-500 border-transparent"
+      }`}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Zap
+            className={`h-4 w-4 ${dark ? "text-violet-400" : "text-white"}`}
+          />
+          <span
+            className={`text-xs font-semibold ${dark ? "text-violet-300" : "text-white"}`}
+          >
+            Quick Add — type up to {MAX_EXPENSES} expenses naturally
+          </span>
+        </div>
+        {text.length > 0 && (
+          <span
+            className={`text-xs font-medium ${isAtLimit ? "text-red-400" : isNearLimit ? (dark ? "text-orange-400" : "text-orange-200") : dark ? "text-violet-400" : "text-white/70"}`}
+          >
+            {remaining} left
+          </span>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          placeholder='e.g. "500 on groceries, 200 on coffee, 1200 for uber yesterday"'
+          value={text}
+          maxLength={MAX_CHARS}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleParse();
+          }}
+          className={`flex-1 px-3 py-2.5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 transition-all
+            ${
+              dark
+                ? "bg-[#252a3d] border border-white/10 text-gray-200 placeholder-gray-500"
+                : "bg-white/20 border border-white/30 text-white placeholder-white/60 focus:bg-white/30"
+            }`}
+        />
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={handleParse}
+          disabled={loading || !text.trim() || isAtLimit}
+          className={`px-4 py-2.5 rounded-xl text-sm font-medium shadow-md hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap
+            ${
+              dark
+                ? "bg-gradient-to-r from-violet-500 to-purple-600 text-white"
+                : "bg-white/20 border border-white/40 text-white backdrop-blur-sm hover:bg-white/30"
+            }`}
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          {loading ? "Parsing..." : "Parse"}
+        </motion.button>
+      </div>
+
+      {!previews.length && !loading && (
+        <p
+          className={`mt-2 text-[11px] ${dark ? "text-violet-400/60" : "text-white/60"}`}
+        >
+          Tip: Separate multiple expenses with commas. Max {MAX_EXPENSES} at a
+          time.
+        </p>
+      )}
+
+      <AnimatePresence>
+        {previews.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className={`mt-3 p-3 rounded-xl border ${dark ? "bg-white/5 border-white/10" : "bg-white/90 border-white/40"}`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <p
+                className={`text-xs font-medium ${dark ? "text-gray-300" : "text-gray-700"}`}
+              >
+                Found {previews.length} expense{previews.length > 1 ? "s" : ""}{" "}
+                — select which to add:
+              </p>
+              {previews.length > 1 && (
+                <button
+                  onClick={() => {
+                    const allOn = Object.values(selected).every(Boolean);
+                    const next = {};
+                    previews.forEach((_, i) => {
+                      next[i] = !allOn;
+                    });
+                    setSelected(next);
+                  }}
+                  className={`text-[11px] underline ${dark ? "text-violet-400" : "text-violet-600"}`}
+                >
+                  {Object.values(selected).every(Boolean)
+                    ? "Deselect all"
+                    : "Select all"}
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2 mb-3">
+              {previews.map((exp, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  onClick={() => toggleSelect(i)}
+                  className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all border ${
+                    selected[i]
+                      ? dark
+                        ? "bg-violet-500/20 border-violet-500/40"
+                        : "bg-violet-50 border-violet-200"
+                      : dark
+                        ? "bg-white/5 border-white/5 opacity-50"
+                        : "bg-gray-50 border-gray-200 opacity-50"
+                  }`}
+                >
+                  <div
+                    className={`h-4 w-4 rounded flex items-center justify-center shrink-0 border ${selected[i] ? "bg-violet-500 border-violet-500" : dark ? "border-white/20" : "border-gray-300"}`}
+                  >
+                    {selected[i] && (
+                      <span className="text-white text-[10px] font-bold">
+                        ✓
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-1">
+                    {[
+                      {
+                        label: "Amount",
+                        value: `${selectedCurrency?.code} ${exp.amount}`,
+                      },
+                      { label: "Category", value: exp.category },
+                      { label: "Date", value: exp.date },
+                      { label: "Description", value: exp.description || "—" },
+                    ].map((f) => (
+                      <div key={f.label}>
+                        <p
+                          className={`text-[10px] ${dark ? "text-gray-500" : "text-gray-400"}`}
+                        >
+                          {f.label}
+                        </p>
+                        <p
+                          className={`text-xs font-medium truncate ${dark ? "text-gray-200" : "text-gray-800"}`}
+                        >
+                          {f.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleConfirm}
+                disabled={selectedCount === 0}
+                className="flex-1 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white text-xs font-medium hover:opacity-90 disabled:opacity-40 transition-opacity"
+              >
+                ✓ Add {selectedCount > 0 ? `${selectedCount} ` : ""}Expense
+                {selectedCount !== 1 ? "s" : ""}
+              </button>
+              <button
+                onClick={handleCancel}
+                className={`flex-1 py-2 rounded-xl border text-xs transition-colors ${dark ? "border-white/10 text-gray-400 hover:bg-white/5" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+              >
+                ✕ Cancel
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function ExpenseTracker() {
   const {
     selectedMonth,
@@ -403,7 +750,6 @@ export default function ExpenseTracker() {
   const { user, loading } = useAuth();
   const { toasts, addToast } = useToast();
 
-  // Theme state — persisted to localStorage
   const [dark, setDark] = useState(() => {
     try {
       return localStorage.getItem("ancy-theme") === "dark";
@@ -416,9 +762,7 @@ export default function ExpenseTracker() {
       const next = !d;
       try {
         localStorage.setItem("ancy-theme", next ? "dark" : "light");
-      } catch {
-        // Ignore localStorage write failures (e.g. private mode restrictions)
-      }
+      } catch {}
       return next;
     });
   }, []);
@@ -445,6 +789,10 @@ export default function ExpenseTracker() {
   const [sourceErrors, setSourceErrors] = useState({});
   const [expErrors, setExpErrors] = useState({});
   const [goalErrors, setGoalErrors] = useState({});
+  const [insightsOpen, setInsightsOpen] = useState(false);
+  const [insightsData, setInsightsData] = useState(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState("");
 
   useEffect(() => {
     const handleAuthError = () =>
@@ -499,27 +847,20 @@ export default function ExpenseTracker() {
   const [newCat, setNewCat] = useState("");
   const [catError, setCatError] = useState("");
 
-  // Theme CSS vars
   const t = {
     bg: dark
       ? "bg-[#12141f]"
       : "bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100",
     text: dark ? "text-gray-100" : "text-gray-800",
     textMuted: dark ? "text-gray-400" : "text-gray-500",
-    textFaint: dark ? "text-gray-400" : "text-gray-400",
-    border: dark ? "border-white/10" : "border-gray-200/60",
-    inputBg: dark
-      ? "bg-[#252a3d] border-white/10 text-gray-200 placeholder-gray-500"
-      : "bg-white/60 border-gray-200 text-gray-800 placeholder-gray-400",
+    textFaint: dark ? "text-gray-500" : "text-gray-400",
     pillBg: dark
       ? "bg-[#252a3d]/80 border-white/10"
       : "bg-white/70 border-gray-200/60",
-    rowHover: dark ? "hover:bg-white/5" : "hover:bg-white/40",
-    categoryPill: dark ? "border-white/10" : "",
+    itemBg: dark ? "bg-white/5 border-white/5" : "bg-white/50 border-gray-100",
     tableHead: dark
       ? "text-gray-500 border-white/10"
       : "text-gray-400 border-gray-200/50",
-    itemBg: dark ? "bg-white/5 border-white/5" : "bg-white/50 border-gray-100",
   };
 
   if (loading) {
@@ -537,7 +878,6 @@ export default function ExpenseTracker() {
 
   if (!user) return <AuthPage />;
 
-  /* ── dialog helpers ── */
   function openConfirm(opts) {
     setConfirmDialog({ open: true, ...opts });
   }
@@ -561,7 +901,56 @@ export default function ExpenseTracker() {
     });
   }
 
-  /* ── income ── */
+  async function fetchInsights() {
+    if (expenses.length === 0) {
+      addToast("Add some expenses first to get insights!", "error");
+      return;
+    }
+    setInsightsOpen(true);
+    setInsightsLoading(true);
+    setInsightsError("");
+    setInsightsData(null);
+    try {
+      const result = await getSpendingInsightsFn({
+        expenses,
+        income: totals.income,
+        categories,
+        currency: selectedCurrency.code,
+        period:
+          monthOptions.find((m) => m.key === selectedMonth)?.label ||
+          "this month",
+      });
+      setInsightsData(result.data);
+    } catch (err) {
+      setInsightsError(
+        err.message || "Could not load insights. Please try again.",
+      );
+    } finally {
+      setInsightsLoading(false);
+    }
+  }
+
+  function handleQuickAddExpense(parsed) {
+    const amt = Number(parsed.amount);
+    if (!amt || amt <= 0) {
+      addToast("Invalid amount parsed.", "error");
+      return;
+    }
+    setState((s) => ({
+      ...s,
+      expenses: [
+        {
+          id: crypto.randomUUID(),
+          date: parsed.date,
+          category: parsed.category,
+          description: parsed.description || "",
+          amount: amt,
+        },
+        ...(s.expenses || []),
+      ],
+    }));
+  }
+
   function addIncomeSource() {
     const errors = {};
     const amt = Number(source.amount);
@@ -599,7 +988,6 @@ export default function ExpenseTracker() {
     });
   }
 
-  /* ── expenses ── */
   function addExpense() {
     const errors = {};
     const amt = Number(exp.amount);
@@ -685,7 +1073,6 @@ export default function ExpenseTracker() {
     addToast("CSV exported!", "success");
   }
 
-  /* ── categories ── */
   function validateCategoryName(nameRaw) {
     const name = (nameRaw || "").trim();
     if (!name) return "Enter a category name.";
@@ -741,7 +1128,6 @@ export default function ExpenseTracker() {
     });
   }
 
-  /* ── goals ── */
   function addSavingsGoal() {
     const errors = {};
     const targetAmt = Number(newGoal.targetAmount);
@@ -843,13 +1229,11 @@ export default function ExpenseTracker() {
     return bud > 0 && spent > bud;
   });
 
-  /* ────────────────────── UI ────────────────────── */
   return (
     <ThemeContext.Provider value={{ dark, toggle: toggleTheme }}>
       <div
         className={`min-h-screen w-full transition-colors duration-300 ${t.bg} p-4 md:p-6`}
       >
-        {/* Dark mode glow decoration */}
         {dark && (
           <div className="fixed inset-0 pointer-events-none overflow-hidden">
             <div className="absolute top-0 right-0 w-[500px] h-[300px] bg-indigo-600/10 rounded-full blur-3xl translate-x-1/2 -translate-y-1/2" />
@@ -873,9 +1257,16 @@ export default function ExpenseTracker() {
           onConfirm={amountDialog.onConfirm}
           onCancel={closeAmountInput}
         />
+        <AIInsightsModal
+          open={insightsOpen}
+          onClose={() => setInsightsOpen(false)}
+          insights={insightsData}
+          loading={insightsLoading}
+          error={insightsError}
+        />
 
         <div className="relative mx-auto max-w-7xl">
-          {/* ── HEADER ── */}
+          {/* HEADER */}
           <motion.header
             {...stagger(0)}
             className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
@@ -892,14 +1283,12 @@ export default function ExpenseTracker() {
                   Your smart way to manage your money.
                 </p>
               </div>
-              {/* PWA badge */}
               <span className="ml-1 rounded-full bg-gradient-to-r from-indigo-500 to-violet-600 px-2 py-0.5 text-[10px] font-medium text-white">
                 PWA
               </span>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {/* Period pill */}
               <div className="flex flex-col gap-1.5">
                 <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                   <SelectTrigger
@@ -932,7 +1321,7 @@ export default function ExpenseTracker() {
                             start: e.target.value,
                           }))
                         }
-                        className={`h-8 px-2 rounded-xl border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-32 ${t.inputBg} ${dark ? "[color-scheme:dark]" : "[color-scheme:light]"}`}
+                        className={`h-8 px-2 rounded-xl border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-32 ${dark ? "bg-[#252a3d] border-white/10 text-gray-200" : "bg-white/70 border-gray-200 text-gray-700"}`}
                       />
                     </div>
                     <div>
@@ -946,17 +1335,25 @@ export default function ExpenseTracker() {
                             end: e.target.value,
                           }))
                         }
-                        className={`h-8 px-2 rounded-xl border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-32 ${t.inputBg} ${dark ? "[color-scheme:dark]" : "[color-scheme:light]"}`}
+                        className={`h-8 px-2 rounded-xl border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-32 ${dark ? "bg-[#252a3d] border-white/10 text-gray-200" : "bg-white/70 border-gray-200 text-gray-700"}`}
                       />
                     </div>
                   </div>
                 )}
               </div>
 
-              <CurrencySelector dark={dark} />
-
-              {/* Theme toggle */}
+              <CurrencySelector />
               <ThemeToggle />
+
+              <motion.button
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={fetchInsights}
+                className="h-9 px-4 rounded-full text-sm flex items-center gap-1.5 shadow-lg shadow-violet-500/25 transition-all bg-gradient-to-r from-violet-500 to-purple-600 text-white hover:shadow-violet-500/40 hover:scale-105"
+              >
+                <Sparkles className="h-4 w-4" />
+                <span className="hidden sm:inline">AI Insights</span>
+              </motion.button>
 
               <motion.button
                 whileHover={{ scale: 1.04 }}
@@ -969,14 +1366,14 @@ export default function ExpenseTracker() {
               </motion.button>
 
               <div className="h-9">
-                <AuthButtons dark={dark} />
+                <AuthButtons />
               </div>
             </div>
           </motion.header>
 
-          {/* ── TWO-COLUMN LAYOUT ── */}
+          {/* TWO-COLUMN LAYOUT */}
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
-            {/* ══ LEFT COLUMN ══ */}
+            {/* LEFT COLUMN */}
             <div className="space-y-6">
               {/* Summary cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1253,7 +1650,7 @@ export default function ExpenseTracker() {
                   </div>
                   {savingsGoals.length === 0 ? (
                     <p className={`text-xs text-center py-4 ${t.textFaint}`}>
-                      No savings goals yet. Add your first one above!
+                      No savings goals yet.
                     </p>
                   ) : (
                     <div className="space-y-3">
@@ -1280,6 +1677,24 @@ export default function ExpenseTracker() {
               <motion.div {...stagger(8)}>
                 <GlassCard className="p-5">
                   <SectionTitle icon={Plus}>Add Expense</SectionTitle>
+
+                  <div className="mb-5">
+                    <QuickAddBar
+                      categories={categories}
+                      selectedCurrency={selectedCurrency}
+                      onExpenseAdd={handleQuickAddExpense}
+                      addToast={addToast}
+                    />
+                  </div>
+
+                  <div
+                    className={`flex items-center gap-3 mb-4 ${dark ? "text-gray-500" : "text-gray-300"}`}
+                  >
+                    <div className="flex-1 h-px bg-current opacity-30" />
+                    <span className="text-xs">or add manually</span>
+                    <div className="flex-1 h-px bg-current opacity-30" />
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-6 gap-3 mb-3 sm:items-start">
                     <div className="sm:col-span-2 space-y-1">
                       <label className={`text-xs ${t.textFaint}`}>Date</label>
@@ -1533,17 +1948,13 @@ export default function ExpenseTracker() {
                       <motion.span
                         key={c}
                         layout
-                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border ${dark ? "text-gray-200" : ""}`}
+                        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border"
                         style={{
                           background: `${colorFor(c)}22`,
                           borderColor: `${colorFor(c)}40`,
-                          color: dark ? "#e5e7eb" : colorFor(c),
+                          color: colorFor(c),
                         }}
                       >
-                        <span
-                          className="h-1.5 w-1.5 rounded-full"
-                          style={{ background: colorFor(c) }}
-                        />
                         {c}
                         {c !== "Other" && (
                           <button
@@ -1564,7 +1975,7 @@ export default function ExpenseTracker() {
               </div>
             </div>
 
-            {/* ══ RIGHT COLUMN ══ */}
+            {/* RIGHT COLUMN */}
             <div className="space-y-6">
               {/* Donut chart */}
               <motion.div {...stagger(2)}>
@@ -1726,11 +2137,7 @@ export default function ExpenseTracker() {
                             placeholder={`Budget (${selectedCurrency.code})`}
                             value={catBudgets[c] ?? ""}
                             className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all
-                              ${
-                                dark
-                                  ? `bg-[#252a3d] text-gray-200 placeholder-gray-500 ${isOver ? "border-red-500/40" : "border-white/10"}`
-                                  : `bg-white/60 text-gray-800 ${isOver ? "border-red-300" : "border-gray-200"}`
-                              }`}
+                              ${dark ? `bg-[#252a3d] text-gray-200 placeholder-gray-500 ${isOver ? "border-red-500/40" : "border-white/10"}` : `bg-white/60 text-gray-800 ${isOver ? "border-red-300" : "border-gray-200"}`}`}
                             onChange={(e) =>
                               setBudget(
                                 c,
@@ -1822,7 +2229,6 @@ export default function ExpenseTracker() {
   );
 }
 
-/* ── Savings Goal Card ── */
 function SavingsGoalCard({
   goal,
   onAddMoney,
@@ -1836,14 +2242,12 @@ function SavingsGoalCard({
     textFaint: dark ? "text-gray-500" : "text-gray-400",
     itemBg: dark ? "bg-white/5 border-white/5" : "bg-white/50 border-gray-100",
   };
-
   const progress = (goal.currentAmount / goal.targetAmount) * 100;
   const daysRemaining = Math.ceil(
     (new Date(goal.targetDate) - new Date()) / (1000 * 60 * 60 * 24),
   );
   const isOverdue = daysRemaining < 0;
   const isCompleted = goal.currentAmount >= goal.targetAmount;
-
   const priorityStyle =
     {
       high: "text-red-400 bg-red-500/10 border-red-500/20",
@@ -1897,7 +2301,6 @@ function SavingsGoalCard({
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
-
       <div className="mb-3">
         <div className={`flex justify-between text-xs mb-1 ${t.textFaint}`}>
           <span>
@@ -1929,20 +2332,17 @@ function SavingsGoalCard({
           {progress.toFixed(1)}% complete
         </p>
       </div>
-
       <div className="flex gap-2">
         <button
           onClick={onAddMoney}
           disabled={isCompleted}
-          className={`flex-1 py-1.5 rounded-xl border text-xs transition-colors disabled:opacity-40
-            ${dark ? "border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10" : "border-indigo-200 text-indigo-500 hover:bg-indigo-50"}`}
+          className={`flex-1 py-1.5 rounded-xl border text-xs transition-colors disabled:opacity-40 ${dark ? "border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10" : "border-indigo-200 text-indigo-500 hover:bg-indigo-50"}`}
         >
           + Add
         </button>
         <button
           onClick={onWithdraw}
-          className={`flex-1 py-1.5 rounded-xl border text-xs transition-colors
-            ${dark ? "border-white/10 text-gray-400 hover:bg-white/5" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+          className={`flex-1 py-1.5 rounded-xl border text-xs transition-colors ${dark ? "border-white/10 text-gray-400 hover:bg-white/5" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
         >
           − Withdraw
         </button>
@@ -1951,7 +2351,6 @@ function SavingsGoalCard({
   );
 }
 
-/* ── Tips dialog ── */
 function TipsDialog() {
   const { dark } = useTheme();
   return (
@@ -1960,8 +2359,7 @@ function TipsDialog() {
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border text-sm shadow-sm transition-colors
-            ${dark ? "bg-[#1e2235]/80 border-white/10 text-gray-400 hover:bg-white/5" : "bg-white/70 border-gray-200/60 text-gray-500 hover:bg-white"}`}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border text-sm shadow-sm transition-colors ${dark ? "bg-[#1e2235]/80 border-white/10 text-gray-400 hover:bg-white/5" : "bg-white/70 border-gray-200/60 text-gray-500 hover:bg-white"}`}
         >
           <HelpCircle className="h-4 w-4" />
           How to use
@@ -1980,6 +2378,20 @@ function TipsDialog() {
             >
               <p>
                 <strong className={dark ? "text-gray-200" : "text-gray-800"}>
+                  ⚡ Quick Add:
+                </strong>{" "}
+                Type naturally like "500 on groceries, 200 on coffee" — Claude
+                parses up to 5 expenses at once. Select which ones to add.
+              </p>
+              <p>
+                <strong className={dark ? "text-gray-200" : "text-gray-800"}>
+                  ✨ AI Insights:
+                </strong>{" "}
+                Click the purple "AI Insights" button for a personalized
+                spending summary.
+              </p>
+              <p>
+                <strong className={dark ? "text-gray-200" : "text-gray-800"}>
                   🌍 Currency:
                 </strong>{" "}
                 Click the currency selector to switch currencies.
@@ -1989,18 +2401,6 @@ function TipsDialog() {
                   📅 Period:
                 </strong>{" "}
                 Choose a month or "Custom Period" for any date range.
-              </p>
-              <p>
-                <strong className={dark ? "text-gray-200" : "text-gray-800"}>
-                  💰 Getting started:
-                </strong>{" "}
-                Add income → set budgets → log expenses.
-              </p>
-              <p>
-                <strong className={dark ? "text-gray-200" : "text-gray-800"}>
-                  🎯 Goals:
-                </strong>{" "}
-                Track savings with progress bars. Add/Withdraw to update.
               </p>
               <p>
                 <strong className={dark ? "text-gray-200" : "text-gray-800"}>

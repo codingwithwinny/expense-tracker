@@ -15,19 +15,20 @@ import {
   browserPopupRedirectResolver,
 } from "firebase/auth";
 import {
-  getFirestore,
-  enableIndexedDbPersistence,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   doc,
   getDoc,
   setDoc,
   serverTimestamp,
 } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { DEFAULT_CATEGORIES } from "@/lib/constants";
 
 /* ---------------------------------------
    Firebase init
 ---------------------------------------- */
-
 const firebaseConfig = {
   apiKey:
     import.meta.env.VITE_FIREBASE_API_KEY ||
@@ -54,8 +55,24 @@ export const auth = initializeAuth(app, {
   popupRedirectResolver: browserPopupRedirectResolver,
 });
 
-export const db = getFirestore(app);
-enableIndexedDbPersistence(db).catch(() => {});
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+  }),
+});
+
+/* ---------------------------------------
+   Firebase Functions (AI endpoints)
+---------------------------------------- */
+const functions = getFunctions(app, "us-central1");
+export const getSpendingInsightsFn = httpsCallable(
+  functions,
+  "getSpendingInsights",
+  { timeout: 60000 },
+);
+export const parseExpenseFn = httpsCallable(functions, "parseExpense", {
+  timeout: 30000,
+});
 
 /* ---------------------------------------
    Auth helpers
@@ -67,7 +84,7 @@ function isStandalone() {
   return (
     window.matchMedia?.("(display-mode: standalone)")?.matches ||
     window.navigator.standalone === true ||
-    window.navigator.userAgent.includes("wv") // Android WebView
+    window.navigator.userAgent.includes("wv")
   );
 }
 
@@ -75,7 +92,6 @@ export function startAuthListener(cb) {
   return onAuthStateChanged(auth, (user) => cb(user || null));
 }
 
-// A tiny “ready” promise some code might await (optional)
 export let redirectResultReady = false;
 let _resolveRR;
 const _rrPromise = new Promise((res) => (_resolveRR = res));
@@ -83,12 +99,10 @@ export function waitForRedirectResult() {
   return redirectResultReady ? Promise.resolve() : _rrPromise;
 }
 
-// ✅ SINGLE definition — do not duplicate this function below
 export async function handleRedirectResultOnce() {
   const pending = sessionStorage.getItem("auth:pendingRedirect");
   console.log("Checking for redirect result...", { pending });
 
-  // Add PWA-specific logging
   if (isStandalone()) {
     console.log("🔄 PWA detected during redirect check");
   }
@@ -101,8 +115,6 @@ export async function handleRedirectResultOnce() {
         credential: result.credential?.providerId,
         operationType: result.operationType,
       });
-
-      // Dispatch success event
       window.dispatchEvent(new CustomEvent("auth:success", { detail: result }));
     } else {
       console.log("No redirect result found");
@@ -113,7 +125,7 @@ export async function handleRedirectResultOnce() {
   } catch (e) {
     console.error("❌ Error handling redirect result:", e);
     window.dispatchEvent(
-      new CustomEvent("auth:error", { detail: e?.message || String(e) })
+      new CustomEvent("auth:error", { detail: e?.message || String(e) }),
     );
   } finally {
     if (pending) {
@@ -127,7 +139,6 @@ export async function handleRedirectResultOnce() {
 
 export async function googleSignIn() {
   try {
-    // Check if we're in a PWA or standalone mode
     const isPWA = isStandalone();
 
     console.log("Environment check:", {
@@ -141,34 +152,26 @@ export async function googleSignIn() {
     if (isPWA) {
       console.log("PWA detected, trying popup first (fallback to redirect)");
       try {
-        // Try popup first for PWA (more reliable)
         await signInWithPopup(auth, provider);
         return;
       } catch (popupError) {
         console.log("PWA popup failed, falling back to redirect:", popupError);
-        // Fallback to redirect if popup fails
-        console.log("Current URL before redirect:", window.location.href);
         sessionStorage.setItem("auth:pendingRedirect", "1");
-        console.log("About to redirect to Google...");
         await signInWithRedirect(auth, provider);
-        console.log("Redirect initiated successfully");
         return;
       }
     }
 
-    // Try popup first for regular web
     console.log("Regular web detected, trying popup first");
     await signInWithPopup(auth, provider);
   } catch (error) {
     console.error("Authentication error:", error);
-    console.log("Popup failed, falling back to redirect:", error);
-    // Fallback to redirect if popup fails
     try {
       sessionStorage.setItem("auth:pendingRedirect", "1");
       await signInWithRedirect(auth, provider);
     } catch (redirectError) {
       console.error("Redirect also failed:", redirectError);
-      throw redirectError; // Re-throw the error so it can be handled by the UI
+      throw redirectError;
     }
   }
 }
@@ -222,6 +225,6 @@ export async function saveMonth(uid, monthKey, payload) {
   await setDoc(
     ref,
     { ...payload, updatedAt: serverTimestamp() },
-    { merge: true }
+    { merge: true },
   );
 }
