@@ -52,6 +52,7 @@ import {
   Sparkles,
   Zap,
   Loader2,
+  Pencil,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
@@ -738,7 +739,251 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast }) {
     </div>
   );
 }
+function EditExpenseModal({
+  open,
+  expense,
+  categories,
+  selectedCurrency,
+  onSave,
+  onCancel,
+}) {
+  const { dark } = useTheme();
+  const [form, setForm] = useState({
+    date: "",
+    category: "",
+    amount: "",
+    description: "",
+  });
+  const [errors, setErrors] = useState({});
+  const [isMobile, setIsMobile] = useState(false);
 
+  useEffect(() => {
+    function checkMobile() {
+      setIsMobile(window.innerWidth < 640);
+    }
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  useEffect(() => {
+    if (open && expense) {
+      setForm({
+        date: expense.date || "",
+        category: expense.category || categories[0] || "",
+        amount: String(expense.amount || ""),
+        description: expense.description || "",
+      });
+      setErrors({});
+    }
+  }, [open, expense]);
+
+  useEffect(() => {
+    if (isMobile && open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isMobile, open]);
+
+  function handleSave() {
+    const errs = {};
+    const amt = Number(form.amount);
+    if (!form.date) errs.date = "Please select a date.";
+    else if (new Date(form.date) > new Date())
+      errs.date = "Cannot use a future date.";
+    if (!form.category) errs.category = "Please select a category.";
+    if (isNaN(amt) || amt <= 0) errs.amount = "Please enter a valid amount.";
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      return;
+    }
+    onSave({ ...expense, ...form, amount: amt });
+  }
+
+  const t = {
+    bg: dark ? "bg-[#1e2235]" : "bg-white",
+    text: dark ? "text-gray-100" : "text-gray-800",
+    textFaint: dark ? "text-gray-500" : "text-gray-400",
+    border: dark ? "border-white/10" : "border-gray-200",
+    input: dark
+      ? "bg-[#252a3d] border-white/10 text-gray-200 placeholder-gray-500"
+      : "bg-white border-gray-200 text-gray-800 placeholder-gray-400",
+    select: dark
+      ? "bg-[#252a3d] border-white/10 text-gray-200"
+      : "bg-white border-gray-200 text-gray-800",
+  };
+
+  const FormContent = () => (
+    <div className="space-y-4">
+      {/* Date */}
+      <div className="space-y-1">
+        <label className={`text-xs font-medium ${t.textFaint}`}>Date</label>
+        <input
+          type="date"
+          value={form.date}
+          onChange={(e) => {
+            setForm((p) => ({ ...p, date: e.target.value }));
+            if (errors.date) setErrors((p) => ({ ...p, date: "" }));
+          }}
+          className={`w-full px-3 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all ${t.input} ${errors.date ? "border-red-400" : ""}`}
+        />
+        {errors.date && (
+          <p className="text-xs text-red-400 flex items-center gap-1">
+            <AlertCircle className="h-3 w-3" />
+            {errors.date}
+          </p>
+        )}
+      </div>
+
+      {/* Category */}
+      <div className="space-y-1">
+        <label className={`text-xs font-medium ${t.textFaint}`}>Category</label>
+        <select
+          value={form.category}
+          onChange={(e) => {
+            setForm((p) => ({ ...p, category: e.target.value }));
+            if (errors.category) setErrors((p) => ({ ...p, category: "" }));
+          }}
+          className={`w-full px-3 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all ${t.select} ${errors.category ? "border-red-400" : ""}`}
+        >
+          {categories.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        {errors.category && (
+          <p className="text-xs text-red-400 flex items-center gap-1">
+            <AlertCircle className="h-3 w-3" />
+            {errors.category}
+          </p>
+        )}
+      </div>
+
+      {/* Amount */}
+      <div className="space-y-1">
+        <label className={`text-xs font-medium ${t.textFaint}`}>
+          Amount ({selectedCurrency?.code})
+        </label>
+        <input
+          inputMode="decimal"
+          placeholder="e.g., 1200"
+          value={form.amount}
+          onChange={(e) => {
+            setForm((p) => ({
+              ...p,
+              amount: e.target.value.replace(/[^0-9.]/g, ""),
+            }));
+            if (errors.amount) setErrors((p) => ({ ...p, amount: "" }));
+          }}
+          className={`w-full px-3 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all ${t.input} ${errors.amount ? "border-red-400" : ""}`}
+        />
+        {errors.amount && (
+          <p className="text-xs text-red-400 flex items-center gap-1">
+            <AlertCircle className="h-3 w-3" />
+            {errors.amount}
+          </p>
+        )}
+      </div>
+
+      {/* Description */}
+      <div className="space-y-1">
+        <label className={`text-xs font-medium ${t.textFaint}`}>
+          Description (optional)
+        </label>
+        <input
+          placeholder="e.g., Coffee at Starbucks"
+          value={form.description}
+          onChange={(e) =>
+            setForm((p) => ({ ...p, description: e.target.value }))
+          }
+          className={`w-full px-3 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all ${t.input}`}
+        />
+      </div>
+
+      {/* Buttons */}
+      <div className="flex gap-2 pt-2">
+        <button
+          onClick={onCancel}
+          className={`flex-1 py-2.5 rounded-xl border text-sm transition-colors ${dark ? "border-white/10 text-gray-400 hover:bg-white/5" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white text-sm font-medium hover:opacity-90 transition-opacity shadow-md"
+        >
+          Save Changes
+        </button>
+      </div>
+    </div>
+  );
+
+  if (!open) return null;
+
+  // Mobile — bottom sheet
+  if (isMobile) {
+    return (
+      <AnimatePresence>
+        {open && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={onCancel}
+              className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 300 }}
+              className={`fixed bottom-0 left-0 right-0 z-50 ${t.bg} border-t ${t.border} rounded-t-3xl p-5 pb-8 max-h-[90vh] overflow-y-auto`}
+            >
+              <div className="w-10 h-1 rounded-full bg-gray-300 mx-auto mb-4" />
+              <p className={`text-base font-semibold mb-4 ${t.text}`}>
+                Edit Expense
+              </p>
+              <FormContent />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    );
+  }
+
+  // Desktop — centered modal
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onCancel();
+      }}
+    >
+      <DialogContent
+        className={`max-w-md rounded-2xl ${dark ? "bg-[#1e2235] border-white/10" : ""}`}
+      >
+        <DialogHeader>
+          <DialogTitle
+            className={`flex items-center gap-2 ${dark ? "text-gray-100" : "text-gray-800"}`}
+          >
+            <Pencil className="h-4 w-4 text-indigo-400" />
+            Edit Expense
+          </DialogTitle>
+          <DialogDescription className={dark ? "text-gray-400" : ""}>
+            Update the details for this expense.
+          </DialogDescription>
+        </DialogHeader>
+        <FormContent />
+      </DialogContent>
+    </Dialog>
+  );
+}
 export default function ExpenseTracker() {
   const {
     selectedMonth,
@@ -793,6 +1038,7 @@ export default function ExpenseTracker() {
   const [insightsData, setInsightsData] = useState(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState("");
+  const [editingExpense, setEditingExpense] = useState(null);
 
   useEffect(() => {
     const handleAuthError = () =>
@@ -1033,7 +1279,16 @@ export default function ExpenseTracker() {
       },
     });
   }
-
+  function editExpense(updated) {
+    setState((s) => ({
+      ...s,
+      expenses: (s.expenses || []).map((e) =>
+        e.id === updated.id ? updated : e,
+      ),
+    }));
+    setEditingExpense(null);
+    addToast("Expense updated!", "success");
+  }
   function setBudget(category, value) {
     const amt = Number(value);
     if (amt > selectedCurrency.maxAmount) {
@@ -1263,6 +1518,14 @@ export default function ExpenseTracker() {
           insights={insightsData}
           loading={insightsLoading}
           error={insightsError}
+        />
+        <EditExpenseModal
+          open={!!editingExpense}
+          expense={editingExpense}
+          categories={categories}
+          selectedCurrency={selectedCurrency}
+          onSave={editExpense}
+          onCancel={() => setEditingExpense(null)}
         />
 
         <div className="relative mx-auto max-w-7xl">
@@ -1826,6 +2089,12 @@ export default function ExpenseTracker() {
                                 )}
                               </span>
                               <button
+                                onClick={() => setEditingExpense(e)}
+                                className={`transition-colors ${dark ? "text-gray-600 hover:text-indigo-400" : "text-gray-300 hover:text-indigo-400"}`}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
                                 onClick={() => removeExpense(e.id)}
                                 className={`transition-colors ${dark ? "text-gray-600 hover:text-red-400" : "text-gray-300 hover:text-red-400"}`}
                               >
@@ -1903,12 +2172,20 @@ export default function ExpenseTracker() {
                                   )}
                                 </td>
                                 <td className="py-3 text-right pr-2">
-                                  <button
-                                    onClick={() => removeExpense(e.id)}
-                                    className={`transition-colors opacity-0 group-hover:opacity-100 ${dark ? "text-gray-600 hover:text-red-400" : "text-gray-300 hover:text-red-400"}`}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
+                                  <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                      onClick={() => setEditingExpense(e)}
+                                      className={`transition-colors ${dark ? "text-gray-600 hover:text-indigo-400" : "text-gray-300 hover:text-indigo-400"}`}
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => removeExpense(e.id)}
+                                      className={`transition-colors ${dark ? "text-gray-600 hover:text-red-400" : "text-gray-300 hover:text-red-400"}`}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
                                 </td>
                               </motion.tr>
                             ))}
