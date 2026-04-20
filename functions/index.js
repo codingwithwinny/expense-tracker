@@ -142,7 +142,9 @@ Return a JSON array of expense objects. Each object must have exactly this forma
   "amount": <number>,
   "category": "<one of the available categories that best fits>",
   "description": "<short description, under 5 words>",
-  "date": "<YYYY-MM-DD format>"
+  "date": "<YYYY-MM-DD format>",
+  "isRecurring": <true or false>,
+  "frequency": "<daily, weekly, monthly, or yearly — only if isRecurring is true, otherwise null>"
 }
 
 Rules:
@@ -154,6 +156,8 @@ Rules:
 - description should be concise (under 5 words)
 - if only one expense is mentioned, still return an array with one item
 - return ONLY the JSON array, nothing else, no explanation
+- if the text contains words like "every month", "monthly", "weekly", "every week", "daily", "every day", "yearly", "recurring", "regular" — set isRecurring to true and set the appropriate frequency
+- if no recurring intent is detected, set isRecurring to false and frequency to null
 
 Example output for "spent 400 on coffee and 1000 on groceries":
 [{"amount":400,"category":"Dining","description":"Coffee","date":"${today}"},{"amount":1000,"category":"Groceries","description":"Groceries","date":"${today}"}]`,
@@ -184,6 +188,8 @@ Example output for "spent 400 on coffee and 1000 on groceries":
             : categories[0] || "Other",
           description: e.description || "",
           date: e.date || today,
+          isRecurring: e.isRecurring === true,
+          frequency: e.frequency || null,
         }));
 
       if (validated.length === 0) {

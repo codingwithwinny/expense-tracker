@@ -753,6 +753,8 @@ function EditExpenseModal({
     category: "",
     amount: "",
     description: "",
+    isRecurring: false,
+    frequency: "monthly",
   });
   const [errors, setErrors] = useState({});
   const [isMobile, setIsMobile] = useState(false);
@@ -773,6 +775,8 @@ function EditExpenseModal({
         category: expense.category || categories[0] || "",
         amount: String(expense.amount || ""),
         description: expense.description || "",
+        isRecurring: false,
+        frequency: "monthly",
       });
       setErrors({});
     }
@@ -801,7 +805,13 @@ function EditExpenseModal({
       setErrors(errs);
       return;
     }
-    onSave({ ...expense, ...form, amount: amt });
+    onSave({
+      ...expense,
+      ...form,
+      amount: amt,
+      isRecurring: form.isRecurring,
+      frequency: form.frequency,
+    });
   }
 
   const t = {
@@ -905,6 +915,40 @@ function EditExpenseModal({
         />
       </div>
 
+      {/* Recurring toggle */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <div
+            onClick={() =>
+              setForm((p) => ({ ...p, isRecurring: !p.isRecurring }))
+            }
+            className={`relative w-9 h-5 rounded-full transition-colors ${form.isRecurring ? "bg-indigo-500" : dark ? "bg-white/20" : "bg-gray-200"}`}
+          >
+            <div
+              className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${form.isRecurring ? "translate-x-4" : ""}`}
+            />
+          </div>
+          <span className={`text-xs ${t.textFaint}`}>Save as recurring</span>
+        </label>
+        {form.isRecurring && (
+          <div className="flex items-center gap-2">
+            <span className={`text-xs ${t.textFaint}`}>Frequency:</span>
+            <select
+              value={form.frequency}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, frequency: e.target.value }))
+              }
+              className={`h-7 px-2 rounded-lg border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 ${dark ? "bg-[#252a3d] border-white/10 text-gray-200" : "bg-white border-gray-200 text-gray-700"}`}
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </div>
+        )}
+      </div>
+
       {/* Buttons */}
       <div className="flex gap-2 pt-2">
         <button
@@ -980,6 +1024,219 @@ function EditExpenseModal({
           </DialogDescription>
         </DialogHeader>
         <FormContent />
+      </DialogContent>
+    </Dialog>
+  );
+}
+function RecurringReviewModal({
+  open,
+  onClose,
+  recurringExpenses,
+  selectedRecurring,
+  setSelectedRecurring,
+  onConfirm,
+  selectedCurrency,
+}) {
+  const { dark } = useTheme();
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    function checkMobile() {
+      setIsMobile(window.innerWidth < 640);
+    }
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  useEffect(() => {
+    if (isMobile && open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isMobile, open]);
+
+  const selectedCount = Object.values(selectedRecurring).filter(Boolean).length;
+  const totalAmount = recurringExpenses
+    .filter((_, i) => selectedRecurring[i])
+    .reduce((sum, r) => sum + r.amount, 0);
+
+  const t = {
+    bg: dark ? "bg-[#1e2235]" : "bg-white",
+    text: dark ? "text-gray-100" : "text-gray-800",
+    textFaint: dark ? "text-gray-500" : "text-gray-400",
+    border: dark ? "border-white/10" : "border-gray-200",
+    itemBg: dark ? "bg-white/5 border-white/5" : "bg-gray-50 border-gray-100",
+    selectedBg: dark
+      ? "bg-indigo-500/20 border-indigo-500/40"
+      : "bg-indigo-50 border-indigo-200",
+  };
+
+  const Content = () => (
+    <div className="space-y-3">
+      <p className={`text-xs ${t.textFaint}`}>
+        Select which recurring expenses to add to this period:
+      </p>
+
+      {/* Select all */}
+      <button
+        onClick={() => {
+          const allOn = Object.values(selectedRecurring).every(Boolean);
+          const next = {};
+          recurringExpenses.forEach((_, i) => {
+            next[i] = !allOn;
+          });
+          setSelectedRecurring(next);
+        }}
+        className={`text-xs underline ${dark ? "text-indigo-400" : "text-indigo-600"}`}
+      >
+        {Object.values(selectedRecurring).every(Boolean)
+          ? "Deselect all"
+          : "Select all"}
+      </button>
+
+      {/* Recurring items */}
+      <div className="space-y-2">
+        {recurringExpenses.map((r, i) => (
+          <motion.div
+            key={r.id}
+            onClick={() => setSelectedRecurring((p) => ({ ...p, [i]: !p[i] }))}
+            className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${selectedRecurring[i] ? t.selectedBg : t.itemBg}`}
+          >
+            {/* Checkbox */}
+            <div
+              className={`h-4 w-4 rounded flex items-center justify-center shrink-0 border ${selectedRecurring[i] ? "bg-indigo-500 border-indigo-500" : dark ? "border-white/20" : "border-gray-300"}`}
+            >
+              {selectedRecurring[i] && (
+                <span className="text-white text-[10px] font-bold">✓</span>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <span className={`text-sm font-medium truncate ${t.text}`}>
+                  {r.description || r.category}
+                </span>
+                <span
+                  className={`text-sm font-semibold shrink-0 ml-2 ${dark ? "text-indigo-300" : "text-indigo-600"}`}
+                >
+                  {fmt(
+                    r.amount,
+                    selectedCurrency.code,
+                    selectedCurrency.locale,
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className={`text-xs ${t.textFaint}`}>{r.category}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${dark ? "bg-white/10 text-gray-400" : "bg-gray-100 text-gray-500"}`}
+                >
+                  {r.frequency}
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Total */}
+      {selectedCount > 0 && (
+        <div
+          className={`p-3 rounded-xl ${dark ? "bg-indigo-500/10 border border-indigo-500/20" : "bg-indigo-50 border border-indigo-100"}`}
+        >
+          <div className="flex items-center justify-between">
+            <span
+              className={`text-xs ${dark ? "text-indigo-300" : "text-indigo-600"}`}
+            >
+              {selectedCount} expense{selectedCount > 1 ? "s" : ""} selected
+            </span>
+            <span
+              className={`text-sm font-bold ${dark ? "text-indigo-300" : "text-indigo-600"}`}
+            >
+              {fmt(totalAmount, selectedCurrency.code, selectedCurrency.locale)}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Buttons */}
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={onClose}
+          className={`flex-1 py-2.5 rounded-xl border text-sm transition-colors ${dark ? "border-white/10 text-gray-400 hover:bg-white/5" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+        >
+          Skip
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={selectedCount === 0}
+          className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity shadow-md"
+        >
+          Add {selectedCount > 0 ? `${selectedCount} ` : ""}Expense
+          {selectedCount !== 1 ? "s" : ""}
+        </button>
+      </div>
+    </div>
+  );
+
+  if (!open) return null;
+
+  if (isMobile) {
+    return (
+      <AnimatePresence>
+        {open && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={onClose}
+              className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 300 }}
+              className={`fixed bottom-0 left-0 right-0 z-50 ${t.bg} border-t ${t.border} rounded-t-3xl p-5 pb-8 max-h-[85vh] overflow-y-auto`}
+            >
+              <div className="w-10 h-1 rounded-full bg-gray-300 mx-auto mb-4" />
+              <p className={`text-base font-semibold mb-4 ${t.text}`}>
+                🔄 Recurring Expenses
+              </p>
+              <Content />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    );
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
+      <DialogContent
+        className={`max-w-md rounded-2xl ${dark ? "bg-[#1e2235] border-white/10" : ""}`}
+      >
+        <DialogHeader>
+          <DialogTitle
+            className={`flex items-center gap-2 ${dark ? "text-gray-100" : "text-gray-800"}`}
+          >
+            🔄 Recurring Expenses
+          </DialogTitle>
+          <DialogDescription className={dark ? "text-gray-400" : ""}>
+            These are your recurring expenses. Add them to this period?
+          </DialogDescription>
+        </DialogHeader>
+        <Content />
       </DialogContent>
     </Dialog>
   );
@@ -1081,7 +1338,25 @@ export default function ExpenseTracker() {
     catBudgets = {},
     categories = DEFAULT_CATEGORIES,
     savingsGoals = [],
+    recurringExpenses = [],
   } = state;
+
+  // Detect new month with recurring expenses
+  useEffect(() => {
+    if (!user || recurringExpenses.length === 0) return;
+    const hasNoExpenses = expenses.length === 0;
+    const hasRecurring = recurringExpenses.length > 0;
+    if (hasNoExpenses && hasRecurring) {
+      setRecurringBanner(true);
+      const allSelected = {};
+      recurringExpenses.forEach((_, i) => {
+        allSelected[i] = true;
+      });
+      setSelectedRecurring(allSelected);
+    } else {
+      setRecurringBanner(false);
+    }
+  }, [currentPeriodKey, recurringExpenses.length]);
 
   const [source, setSource] = useState({ name: "Salary", amount: "" });
   const [exp, setExp] = useState({
@@ -1089,7 +1364,13 @@ export default function ExpenseTracker() {
     category: categories[0] || "Groceries",
     description: "",
     amount: "",
+    isRecurring: false,
+    frequency: "monthly",
   });
+  const [recurringBanner, setRecurringBanner] = useState(false);
+  const [recurringReviewOpen, setRecurringReviewOpen] = useState(false);
+  const [selectedRecurring, setSelectedRecurring] = useState({});
+
   const [newCat, setNewCat] = useState("");
   const [catError, setCatError] = useState("");
 
@@ -1182,19 +1463,39 @@ export default function ExpenseTracker() {
       addToast("Invalid amount parsed.", "error");
       return;
     }
-    setState((s) => ({
-      ...s,
-      expenses: [
-        {
-          id: crypto.randomUUID(),
-          date: parsed.date,
-          category: parsed.category,
-          description: parsed.description || "",
-          amount: amt,
-        },
-        ...(s.expenses || []),
-      ],
-    }));
+    setState((s) => {
+      const newExpense = {
+        id: crypto.randomUUID(),
+        date: parsed.date,
+        category: parsed.category,
+        description: parsed.description || "",
+        amount: amt,
+      };
+      const updates = { ...s, expenses: [newExpense, ...(s.expenses || [])] };
+      // If Claude detected recurring intent, save to recurring list too
+      if (parsed.isRecurring) {
+        const alreadyExists = (s.recurringExpenses || []).some(
+          (r) =>
+            r.description === parsed.description &&
+            r.amount === amt &&
+            r.category === parsed.category,
+        );
+        if (!alreadyExists) {
+          updates.recurringExpenses = [
+            {
+              id: crypto.randomUUID(),
+              category: parsed.category,
+              description: parsed.description || "",
+              amount: amt,
+              frequency: parsed.frequency || "monthly",
+              createdAt: new Date().toISOString(),
+            },
+            ...(s.recurringExpenses || []),
+          ];
+        }
+      }
+      return updates;
+    });
   }
 
   function addIncomeSource() {
@@ -1252,17 +1553,47 @@ export default function ExpenseTracker() {
     setState((s) => ({
       ...s,
       expenses: [
-        { id: crypto.randomUUID(), ...exp, amount: amt },
+        {
+          id: crypto.randomUUID(),
+          date: exp.date,
+          category: exp.category,
+          description: exp.description,
+          amount: amt,
+        },
         ...(s.expenses || []),
       ],
     }));
+    // If recurring, save to recurring list
+    if (exp.isRecurring) {
+      setState((s) => ({
+        ...s,
+        recurringExpenses: [
+          {
+            id: crypto.randomUUID(),
+            category: exp.category,
+            description: exp.description,
+            amount: amt,
+            frequency: exp.frequency,
+            createdAt: new Date().toISOString(),
+          },
+          ...(s.recurringExpenses || []),
+        ],
+      }));
+      addToast(
+        `Expense added + saved as ${exp.frequency} recurring!`,
+        "success",
+      );
+    } else {
+      addToast("Expense added!", "success");
+    }
     setExp({
       date: new Date().toISOString().slice(0, 10),
       category: exp.category,
       description: "",
       amount: "",
+      isRecurring: false,
+      frequency: "monthly",
     });
-    addToast("Expense added!", "success");
   }
 
   function removeExpense(id) {
@@ -1280,14 +1611,105 @@ export default function ExpenseTracker() {
     });
   }
   function editExpense(updated) {
+    setState((s) => {
+      const updatedExpenses = (s.expenses || []).map((e) =>
+        e.id === updated.id ? updated : e,
+      );
+      // If marked as recurring, add to recurring list
+      if (updated.isRecurring) {
+        const alreadyExists = (s.recurringExpenses || []).some(
+          (r) =>
+            r.description === updated.description &&
+            r.amount === updated.amount &&
+            r.category === updated.category,
+        );
+        if (!alreadyExists) {
+          return {
+            ...s,
+            expenses: updatedExpenses,
+            recurringExpenses: [
+              {
+                id: crypto.randomUUID(),
+                category: updated.category,
+                description: updated.description,
+                amount: updated.amount,
+                frequency: updated.frequency || "monthly",
+                createdAt: new Date().toISOString(),
+              },
+              ...(s.recurringExpenses || []),
+            ],
+          };
+        }
+      }
+      return { ...s, expenses: updatedExpenses };
+    });
+    setEditingExpense(null);
+    addToast(
+      updated.isRecurring
+        ? "Expense updated + saved as recurring!"
+        : "Expense updated!",
+      "success",
+    );
+  }
+  function addRecurringExpense(recurringItem) {
+    // Save to recurring list
     setState((s) => ({
       ...s,
-      expenses: (s.expenses || []).map((e) =>
-        e.id === updated.id ? updated : e,
-      ),
+      recurringExpenses: [
+        {
+          id: crypto.randomUUID(),
+          ...recurringItem,
+          createdAt: new Date().toISOString(),
+        },
+        ...(s.recurringExpenses || []),
+      ],
     }));
-    setEditingExpense(null);
-    addToast("Expense updated!", "success");
+  }
+
+  function removeRecurringExpense(id) {
+    openConfirm({
+      title: "Remove recurring expense?",
+      description: "This will stop it from being suggested in future months.",
+      onConfirm: () => {
+        setState((s) => ({
+          ...s,
+          recurringExpenses: (s.recurringExpenses || []).filter(
+            (r) => r.id !== id,
+          ),
+        }));
+        addToast("Recurring expense removed.", "success");
+        closeConfirm();
+      },
+    });
+  }
+
+  function applyRecurringExpenses() {
+    const toAdd = recurringExpenses.filter((_, i) => selectedRecurring[i]);
+    if (toAdd.length === 0) {
+      setRecurringReviewOpen(false);
+      setRecurringBanner(false);
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    setState((s) => ({
+      ...s,
+      expenses: [
+        ...toAdd.map((r) => ({
+          id: crypto.randomUUID(),
+          date: today,
+          category: r.category,
+          description: r.description,
+          amount: r.amount,
+        })),
+        ...(s.expenses || []),
+      ],
+    }));
+    addToast(
+      `${toAdd.length} recurring expense${toAdd.length > 1 ? "s" : ""} added!`,
+      "success",
+    );
+    setRecurringReviewOpen(false);
+    setRecurringBanner(false);
   }
   function setBudget(category, value) {
     const amt = Number(value);
@@ -1534,6 +1956,59 @@ export default function ExpenseTracker() {
             {...stagger(0)}
             className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
           >
+            {/* Recurring expenses banner */}
+            <AnimatePresence>
+              {recurringBanner && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className={`mb-4 p-4 rounded-2xl border flex items-center justify-between gap-4 ${
+                    dark
+                      ? "bg-indigo-500/10 border-indigo-500/20"
+                      : "bg-indigo-50 border-indigo-200"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">🔄</span>
+                    <div>
+                      <p
+                        className={`text-sm font-semibold ${dark ? "text-indigo-300" : "text-indigo-700"}`}
+                      >
+                        You have {recurringExpenses.length} recurring expense
+                        {recurringExpenses.length > 1 ? "s" : ""}
+                      </p>
+                      <p
+                        className={`text-xs ${dark ? "text-indigo-400" : "text-indigo-500"}`}
+                      >
+                        {fmt(
+                          recurringExpenses.reduce((s, r) => s + r.amount, 0),
+                          selectedCurrency.code,
+                          selectedCurrency.locale,
+                        )}{" "}
+                        total — add them to this period?
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => {
+                        setRecurringReviewOpen(true);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white text-xs font-medium hover:opacity-90 shadow-md"
+                    >
+                      Review & Add
+                    </button>
+                    <button
+                      onClick={() => setRecurringBanner(false)}
+                      className={`p-1.5 rounded-xl transition-colors ${dark ? "text-gray-400 hover:bg-white/5" : "text-gray-400 hover:bg-gray-100"}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
                 <LayoutDashboard className="h-5 w-5 text-white" />
@@ -2034,6 +2509,54 @@ export default function ExpenseTracker() {
                         }
                       />
                     </div>
+
+                    {/* Recurring toggle */}
+                    <div className="sm:col-span-6 flex items-center gap-4 flex-wrap">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <div
+                          onClick={() =>
+                            setExp((p) => ({
+                              ...p,
+                              isRecurring: !p.isRecurring,
+                            }))
+                          }
+                          className={`relative w-9 h-5 rounded-full transition-colors ${exp.isRecurring ? "bg-indigo-500" : dark ? "bg-white/20" : "bg-gray-200"}`}
+                        >
+                          <div
+                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${exp.isRecurring ? "translate-x-4" : ""}`}
+                          />
+                        </div>
+                        <span className={`text-xs ${t.textFaint}`}>
+                          Recurring expense
+                        </span>
+                      </label>
+                      {exp.isRecurring && (
+                        <motion.div
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className="flex items-center gap-2"
+                        >
+                          <span className={`text-xs ${t.textFaint}`}>
+                            Frequency:
+                          </span>
+                          <select
+                            value={exp.frequency}
+                            onChange={(e) =>
+                              setExp((p) => ({
+                                ...p,
+                                frequency: e.target.value,
+                              }))
+                            }
+                            className={`h-7 px-2 rounded-lg border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 ${dark ? "bg-[#252a3d] border-white/10 text-gray-200" : "bg-white border-gray-200 text-gray-700"}`}
+                          >
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="yearly">Yearly</option>
+                          </select>
+                        </motion.div>
+                      )}
+                    </div>
                     <div className="sm:col-span-1 flex items-end">
                       <GradBtn onClick={addExpense} className="w-full">
                         + Add
@@ -2246,6 +2769,67 @@ export default function ExpenseTracker() {
                   </div>
                 </GlassCard>
               </motion.div>
+
+              {/* Recurring Expenses */}
+              {recurringExpenses.length > 0 && (
+                <motion.div {...stagger(10)}>
+                  <GlassCard className="p-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <span className="text-base">🔄</span>
+                      <h2
+                        className={`font-semibold text-sm ${dark ? "text-gray-200" : "text-gray-700"}`}
+                      >
+                        Recurring Expenses
+                      </h2>
+                    </div>
+                    <div className="space-y-2">
+                      {recurringExpenses.map((r) => (
+                        <div
+                          key={r.id}
+                          className={`flex items-center justify-between p-3 rounded-xl border ${dark ? "bg-white/5 border-white/5" : "bg-white/50 border-gray-100"}`}
+                        >
+                          <div className="min-w-0">
+                            <p
+                              className={`text-sm font-medium truncate ${dark ? "text-gray-200" : "text-gray-700"}`}
+                            >
+                              {r.description || r.category}
+                            </p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span
+                                className={`text-xs ${dark ? "text-gray-500" : "text-gray-400"}`}
+                              >
+                                {r.category}
+                              </span>
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded-full ${dark ? "bg-white/10 text-gray-400" : "bg-gray-100 text-gray-500"}`}
+                              >
+                                {r.frequency}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0 ml-3">
+                            <span
+                              className={`text-sm font-semibold ${dark ? "text-indigo-300" : "text-indigo-600"}`}
+                            >
+                              {fmt(
+                                r.amount,
+                                selectedCurrency.code,
+                                selectedCurrency.locale,
+                              )}
+                            </span>
+                            <button
+                              onClick={() => removeRecurringExpense(r.id)}
+                              className={`transition-colors ${dark ? "text-gray-600 hover:text-red-400" : "text-gray-300 hover:text-red-400"}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </GlassCard>
+                </motion.div>
+              )}
 
               <div className="mt-2">
                 <TipsDialog />
