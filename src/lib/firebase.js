@@ -191,6 +191,30 @@ export async function signInWithEmail(email, password) {
 /* ---------------------------------------
    App data helpers
 ---------------------------------------- */
+export async function loadUserDoc(uid) {
+  if (!uid) return null;
+  try {
+    const ref = doc(db, "users", uid);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return null;
+    return snap.data();
+  } catch (err) {
+    console.error("loadUserDoc failed:", err);
+    return null;
+  }
+}
+
+export async function saveUserDoc(uid, data) {
+  if (!uid) return;
+  try {
+    const ref = doc(db, "users", uid);
+    await setDoc(ref, data, { merge: true });
+  } catch (err) {
+    console.error("saveUserDoc failed:", err);
+    throw err;
+  }
+}
+
 export async function loadMonth(uid, monthKey) {
   const ref = doc(db, "users", uid, "months", monthKey);
   const snap = await getDoc(ref);

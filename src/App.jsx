@@ -13,7 +13,7 @@ import {
   MAX_CATEGORY_NAME_LEN,
   COLORS,
 } from "@/lib/constants";
-import { getSpendingInsightsFn, parseExpenseFn } from "@/lib/firebase";
+import { getSpendingInsightsFn, parseExpenseFn, loadUserDoc, saveUserDoc } from "@/lib/firebase";
 
 import AuthButtons from "@/components/AuthButtons";
 import AuthPage from "@/components/AuthPage";
@@ -168,6 +168,290 @@ function SectionTitle({ icon: Icon, children, iconColor = "text-indigo-500" }) {
       >
         {children}
       </h2>
+    </div>
+  );
+}
+
+function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip, selectedCurrency }) {
+  const totalSteps = 5;
+  const COMMON_CATEGORIES = [
+    { name: "Groceries", emoji: "🛒" },
+    { name: "Rent", emoji: "🏠" },
+    { name: "Food", emoji: "🍔" },
+    { name: "Fuel", emoji: "⛽" },
+    { name: "Utilities", emoji: "💡" },
+    { name: "Transport", emoji: "🚗" },
+    { name: "Entertainment", emoji: "🎬" },
+    { name: "Shopping", emoji: "👕" },
+    { name: "Health", emoji: "💊" },
+    { name: "Travel", emoji: "✈️" },
+    { name: "Bills", emoji: "📱" },
+    { name: "Other", emoji: "💼" },
+  ];
+
+  const next = () => setStep(Math.min(step + 1, totalSteps));
+  const back = () => setStep(Math.max(step - 1, 1));
+
+  const toggleCategory = (name) => {
+    const current = data.selectedCategories || [];
+    if (current.includes(name)) {
+      setData({ ...data, selectedCategories: current.filter((c) => c !== name) });
+    } else {
+      setData({ ...data, selectedCategories: [...current, name] });
+    }
+  };
+
+  const canProceedStep2 = data.incomeAmount && Number(data.incomeAmount) > 0;
+  const canProceedStep3 = (data.selectedCategories || []).length > 0;
+
+  const bg = dark ? "bg-[#12141f]" : "bg-gradient-to-br from-slate-50 to-indigo-50";
+  const textMain = dark ? "text-white" : "text-gray-900";
+  const textMuted = dark ? "text-gray-400" : "text-gray-600";
+  const inputBg = dark ? "bg-[#252a3d] border-white/10 text-white" : "bg-white border-gray-200 text-gray-900";
+
+  return (
+    <div className={`fixed inset-0 z-50 ${bg} flex flex-col overflow-y-auto`}>
+      {/* Progress dots */}
+      <div className="flex justify-center items-center gap-2 pt-8 pb-4">
+        {Array.from({ length: totalSteps }).map((_, i) => (
+          <div
+            key={i}
+            className={`h-1.5 rounded-full transition-all duration-300 ${
+              i + 1 === step ? "w-8 bg-indigo-500" : i + 1 < step ? "w-4 bg-indigo-500/60" : "w-4 bg-gray-400/30"
+            }`}
+          />
+        ))}
+      </div>
+
+      {/* Step content */}
+      <div className="flex-1 flex items-center justify-center px-6 py-8">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={step}
+            initial={{ opacity: 0, x: 30 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -30 }}
+            transition={{ duration: 0.3 }}
+            className="w-full max-w-md"
+          >
+            {step === 1 && (
+              <div className="text-center space-y-6">
+                <div className="text-6xl mb-4">👋</div>
+                <h1 className={`text-3xl font-bold ${textMain}`}>Welcome to Ancy</h1>
+                <p className={`text-base ${textMuted}`}>
+                  Let's set up your money dashboard in 60 seconds.
+                </p>
+                <div className="pt-4 space-y-3">
+                  <button
+                    onClick={next}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white font-semibold hover:opacity-90 active:scale-[0.98] transition-all"
+                  >
+                    Get Started
+                  </button>
+                  <button
+                    onClick={onSkip}
+                    className={`w-full py-2 text-sm ${textMuted} hover:underline`}
+                  >
+                    Skip setup
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <div className="text-5xl mb-3">💰</div>
+                  <h2 className={`text-2xl font-bold ${textMain}`}>What's your monthly income?</h2>
+                  <p className={`text-sm mt-2 ${textMuted}`}>
+                    We'll use this to track your spending vs earning.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className={`text-xs font-medium ${textMuted} mb-1 block`}>Source name</label>
+                    <input
+                      type="text"
+                      value={data.incomeName}
+                      onChange={(e) => setData({ ...data, incomeName: e.target.value })}
+                      placeholder="Salary"
+                      className={`w-full px-4 py-3 rounded-xl border ${inputBg} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`text-xs font-medium ${textMuted} mb-1 block`}>
+                      Amount ({selectedCurrency.code})
+                    </label>
+                    <input
+                      type="number"
+                      value={data.incomeAmount}
+                      onChange={(e) => setData({ ...data, incomeAmount: e.target.value })}
+                      placeholder="50000"
+                      className={`w-full px-4 py-3 rounded-xl border ${inputBg} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={back}
+                    className={`flex-1 py-3 rounded-xl border ${dark ? "border-white/10 text-white hover:bg-white/5" : "border-gray-200 text-gray-700 hover:bg-gray-50"} font-medium transition`}
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={next}
+                    disabled={!canProceedStep2}
+                    className={`flex-[2] py-3 rounded-xl font-semibold transition ${
+                      canProceedStep2
+                        ? "bg-gradient-to-r from-indigo-500 to-cyan-500 text-white hover:opacity-90 active:scale-[0.98]"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    }`}
+                  >
+                    Next
+                  </button>
+                </div>
+                <button
+                  onClick={next}
+                  className={`w-full text-sm ${textMuted} hover:underline`}
+                >
+                  Skip this step
+                </button>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <div className="text-5xl mb-3">🎯</div>
+                  <h2 className={`text-2xl font-bold ${textMain}`}>What do you spend on?</h2>
+                  <p className={`text-sm mt-2 ${textMuted}`}>
+                    Tap the ones that apply. You can change these anytime.
+                  </p>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {COMMON_CATEGORIES.map((cat) => {
+                    const isSelected = (data.selectedCategories || []).includes(cat.name);
+                    return (
+                      <button
+                        key={cat.name}
+                        onClick={() => toggleCategory(cat.name)}
+                        className={`py-3 px-2 rounded-xl border-2 transition-all active:scale-95 ${
+                          isSelected
+                            ? "border-indigo-500 bg-indigo-500/10"
+                            : dark
+                            ? "border-white/10 hover:border-white/20"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <div className="text-2xl mb-1">{cat.emoji}</div>
+                        <div className={`text-xs font-medium ${textMain}`}>{cat.name}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={back}
+                    className={`flex-1 py-3 rounded-xl border ${dark ? "border-white/10 text-white hover:bg-white/5" : "border-gray-200 text-gray-700 hover:bg-gray-50"} font-medium transition`}
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={next}
+                    disabled={!canProceedStep3}
+                    className={`flex-[2] py-3 rounded-xl font-semibold transition ${
+                      canProceedStep3
+                        ? "bg-gradient-to-r from-indigo-500 to-cyan-500 text-white hover:opacity-90 active:scale-[0.98]"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    }`}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {step === 4 && (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <div className="text-5xl mb-3">🏆</div>
+                  <h2 className={`text-2xl font-bold ${textMain}`}>Any savings goals?</h2>
+                  <p className={`text-sm mt-2 ${textMuted}`}>
+                    Totally optional — you can add these later.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className={`text-xs font-medium ${textMuted} mb-1 block`}>Goal name</label>
+                    <input
+                      type="text"
+                      value={data.savingsGoalName}
+                      onChange={(e) => setData({ ...data, savingsGoalName: e.target.value })}
+                      placeholder="Emergency fund"
+                      className={`w-full px-4 py-3 rounded-xl border ${inputBg} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`text-xs font-medium ${textMuted} mb-1 block`}>
+                      Target amount ({selectedCurrency.code})
+                    </label>
+                    <input
+                      type="number"
+                      value={data.savingsGoalTarget}
+                      onChange={(e) => setData({ ...data, savingsGoalTarget: e.target.value })}
+                      placeholder="100000"
+                      className={`w-full px-4 py-3 rounded-xl border ${inputBg} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={back}
+                    className={`flex-1 py-3 rounded-xl border ${dark ? "border-white/10 text-white hover:bg-white/5" : "border-gray-200 text-gray-700 hover:bg-gray-50"} font-medium transition`}
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={next}
+                    className="flex-[2] py-3 rounded-xl font-semibold bg-gradient-to-r from-indigo-500 to-cyan-500 text-white hover:opacity-90 active:scale-[0.98] transition"
+                  >
+                    Finish
+                  </button>
+                </div>
+                <button
+                  onClick={next}
+                  className={`w-full text-sm ${textMuted} hover:underline`}
+                >
+                  Skip for now
+                </button>
+              </div>
+            )}
+
+            {step === 5 && (
+              <div className="text-center space-y-6">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 200, damping: 12 }}
+                  className="text-7xl"
+                >
+                  🎉
+                </motion.div>
+                <h2 className={`text-3xl font-bold ${textMain}`}>You're all set!</h2>
+                <p className={`text-base ${textMuted}`}>
+                  Let's start tracking your finances.
+                </p>
+                <button
+                  onClick={onComplete}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white font-semibold hover:opacity-90 active:scale-[0.98] transition-all"
+                >
+                  Go to Dashboard
+                </button>
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -1331,6 +1615,17 @@ export default function ExpenseTracker() {
   const [editingExpense, setEditingExpense] = useState(null);
   const [collapsedDates, setCollapsedDates] = useState(new Set());
   const [showOlderExpenses, setShowOlderExpenses] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(1);
+  const [onboardingData, setOnboardingData] = useState({
+    incomeName: "Salary",
+    incomeAmount: "",
+    selectedCategories: ["Groceries", "Rent", "Food", "Utilities", "Transport"],
+    savingsGoalName: "",
+    savingsGoalTarget: "",
+  });
+  const [showAITip, setShowAITip] = useState(false);
+  const [userDoc, setUserDoc] = useState(null);
 
   useEffect(() => {
     const handleAuthError = () =>
@@ -1338,6 +1633,30 @@ export default function ExpenseTracker() {
     window.addEventListener("auth:error", handleAuthError);
     return () => window.removeEventListener("auth:error", handleAuthError);
   }, [addToast]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const doc = await loadUserDoc(user.uid);
+        if (cancelled) return;
+        setUserDoc(doc);
+        const onboarded = doc?.onboarding?.completed === true;
+        const tipDismissed = doc?.onboarding?.aiTipDismissed === true;
+        if (!onboarded) {
+          setShowOnboarding(true);
+        } else if (!tipDismissed) {
+          setShowAITip(true);
+        }
+      } catch (err) {
+        console.error("Failed to load user doc:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid]);
 
   const monthOptions = useMemo(() => {
     const list = [{ key: "custom", label: "Custom Period" }];
@@ -1946,6 +2265,92 @@ export default function ExpenseTracker() {
       <div
         className={`min-h-screen w-full transition-colors duration-300 ${t.bg} p-4 md:p-6`}
       >
+        {showOnboarding && (
+          <OnboardingFlow
+            dark={dark}
+            data={onboardingData}
+            setData={setOnboardingData}
+            step={onboardingStep}
+            setStep={setOnboardingStep}
+            selectedCurrency={selectedCurrency}
+            onComplete={async () => {
+              try {
+                await saveUserDoc(user.uid, {
+                  onboarding: {
+                    completed: true,
+                    completedAt: new Date().toISOString(),
+                    aiTipDismissed: false,
+                    skipped: false,
+                  },
+                });
+
+                setState((s) => {
+                  const next = { ...s };
+
+                  if (onboardingData.incomeAmount && Number(onboardingData.incomeAmount) > 0) {
+                    next.incomeSources = [
+                      ...(s.incomeSources || []),
+                      {
+                        id: crypto.randomUUID(),
+                        name: onboardingData.incomeName || "Salary",
+                        amount: Number(onboardingData.incomeAmount),
+                      },
+                    ];
+                  }
+
+                  if ((onboardingData.selectedCategories || []).length > 0) {
+                    next.categories = Array.from(
+                      new Set([...(s.categories || []), ...onboardingData.selectedCategories])
+                    );
+                  }
+
+                  if (onboardingData.savingsGoalName && onboardingData.savingsGoalTarget) {
+                    const defaultTargetDate = new Date();
+                    defaultTargetDate.setMonth(defaultTargetDate.getMonth() + 3);
+                    next.savingsGoals = [
+                      ...(s.savingsGoals || []),
+                      {
+                        id: crypto.randomUUID(),
+                        name: onboardingData.savingsGoalName,
+                        targetAmount: Number(onboardingData.savingsGoalTarget),
+                        currentAmount: 0,
+                        targetDate: defaultTargetDate.toISOString().split("T")[0],
+                        priority: "medium",
+                        createdAt: new Date().toISOString(),
+                      },
+                    ];
+                  }
+
+                  return next;
+                });
+
+                setShowOnboarding(false);
+                setShowAITip(true);
+                addToast("Welcome to Ancy! 🎉", "success");
+              } catch (err) {
+                console.error("Failed to complete onboarding:", err);
+                addToast("Something went wrong. Please try again.", "error");
+              }
+            }}
+            onSkip={async () => {
+              try {
+                await saveUserDoc(user.uid, {
+                  onboarding: {
+                    completed: true,
+                    completedAt: new Date().toISOString(),
+                    aiTipDismissed: false,
+                    skipped: true,
+                  },
+                });
+                setShowOnboarding(false);
+                setShowAITip(true);
+              } catch (err) {
+                console.error("Failed to skip onboarding:", err);
+              }
+            }}
+          />
+        )}
+
         {dark && (
           <div className="fixed inset-0 pointer-events-none overflow-hidden">
             <div className="absolute top-0 right-0 w-[500px] h-[300px] bg-indigo-600/10 rounded-full blur-3xl translate-x-1/2 -translate-y-1/2" />
@@ -3220,9 +3625,11 @@ function SavingsGoalCard({
     itemBg: dark ? "bg-white/5 border-white/5" : "bg-white/50 border-gray-100",
   };
   const progress = (goal.currentAmount / goal.targetAmount) * 100;
-  const daysRemaining = Math.ceil(
-    (new Date(goal.targetDate) - new Date()) / (1000 * 60 * 60 * 24),
-  );
+  const daysRemaining = goal.targetDate
+    ? Math.ceil(
+        (new Date(goal.targetDate) - new Date()) / (1000 * 60 * 60 * 24),
+      )
+    : null;
   const isOverdue = daysRemaining < 0;
   const isCompleted = goal.currentAmount >= goal.targetAmount;
   const priorityStyle =
@@ -3262,13 +3669,15 @@ function SavingsGoalCard({
             <span
               className={`px-2 py-0.5 text-[10px] font-medium rounded-full border ${priorityStyle}`}
             >
-              {goal.priority.charAt(0).toUpperCase() + goal.priority.slice(1)}
+              {goal.priority ? goal.priority.charAt(0).toUpperCase() + goal.priority.slice(1) : "Medium"}
             </span>
-            <span
-              className={`px-2 py-0.5 text-[10px] font-medium rounded-full border ${statusStyle}`}
-            >
-              {statusText}
-            </span>
+            {daysRemaining !== null && (
+              <span
+                className={`px-2 py-0.5 text-[10px] font-medium rounded-full border ${statusStyle}`}
+              >
+                {statusText}
+              </span>
+            )}
           </div>
         </div>
         <button
