@@ -456,6 +456,58 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
   );
 }
 
+function AITooltip({ dark, onDismiss }) {
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+        className="absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full z-40 w-[280px] pointer-events-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className={`relative p-4 rounded-2xl shadow-2xl ${
+            dark
+              ? "bg-gradient-to-br from-violet-600 to-purple-700 border border-violet-400/30"
+              : "bg-gradient-to-br from-violet-500 to-purple-600"
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div className="text-2xl">✨</div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-white mb-1">
+                Try AI Quick Add
+              </p>
+              <p className="text-xs text-white/90 mb-3">
+                Just type naturally — like{" "}
+                <span className="font-mono bg-white/20 px-1.5 py-0.5 rounded">
+                  spent 500 on groceries
+                </span>
+              </p>
+              <button
+                onClick={onDismiss}
+                className="text-xs font-semibold text-white/95 hover:text-white underline underline-offset-2"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+          {/* Arrow pointing down to Quick Add bar */}
+          <div
+            className={`absolute left-1/2 -translate-x-1/2 -bottom-2 w-4 h-4 rotate-45 ${
+              dark
+                ? "bg-purple-700 border-r border-b border-violet-400/30"
+                : "bg-purple-600"
+            }`}
+          />
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 function ThemedInput({ className = "", error = false, ...props }) {
   const { dark } = useTheme();
   return (
@@ -793,12 +845,14 @@ function AIInsightsModal({ open, onClose, insights, loading, error }) {
   );
 }
 
-function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast }) {
+function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast, showAITip, onAITipDismiss }) {
   const { dark } = useTheme();
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [previews, setPreviews] = useState([]);
   const [selected, setSelected] = useState({});
+
+  console.log("[AITip Debug] QuickAddBar showAITip prop:", showAITip);
 
   const MAX_CHARS = 300;
   const MAX_EXPENSES = 5;
@@ -873,7 +927,8 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast }) {
 
   return (
     <div
-      className={`p-4 rounded-2xl border overflow-hidden ${
+      data-quickadd-bar
+      className={`relative p-4 rounded-2xl border overflow-hidden ${
         dark
           ? "bg-gradient-to-r from-violet-500/20 to-cyan-500/20 border-violet-500/30"
           : "bg-indigo-500 border-transparent"
@@ -904,7 +959,10 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast }) {
           placeholder='e.g. "500 on groceries, 200 on coffee"'
           value={text}
           maxLength={MAX_CHARS}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (showAITip && onAITipDismiss) onAITipDismiss();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") handleParse();
           }}
@@ -1639,18 +1697,25 @@ export default function ExpenseTracker() {
     let cancelled = false;
     (async () => {
       try {
+        console.log("[AITip Debug] Loading user doc for uid:", user.uid);
         const doc = await loadUserDoc(user.uid);
         if (cancelled) return;
+        console.log("[AITip Debug] User doc loaded:", doc);
         setUserDoc(doc);
         const onboarded = doc?.onboarding?.completed === true;
         const tipDismissed = doc?.onboarding?.aiTipDismissed === true;
+        console.log("[AITip Debug] onboarded:", onboarded, "tipDismissed:", tipDismissed);
         if (!onboarded) {
+          console.log("[AITip Debug] → Triggering onboarding");
           setShowOnboarding(true);
         } else if (!tipDismissed) {
+          console.log("[AITip Debug] → Triggering AI tip");
           setShowAITip(true);
+        } else {
+          console.log("[AITip Debug] → Neither onboarding nor tip needed");
         }
       } catch (err) {
-        console.error("Failed to load user doc:", err);
+        console.error("[AITip Debug] Failed to load user doc:", err);
       }
     })();
     return () => {
@@ -2857,12 +2922,44 @@ export default function ExpenseTracker() {
                   <SectionTitle icon={Plus}>Add Expense</SectionTitle>
 
                   <div className="mb-5">
-                    <QuickAddBar
-                      categories={categories}
-                      selectedCurrency={selectedCurrency}
-                      onExpenseAdd={handleQuickAddExpense}
-                      addToast={addToast}
-                    />
+                    <div className="relative">
+                      {showAITip && (
+                        <AITooltip
+                          dark={dark}
+                          onDismiss={async () => {
+                            if (!showAITip) return;
+                            try {
+                              await saveUserDoc(user.uid, {
+                                onboarding: { aiTipDismissed: true },
+                              });
+                              setShowAITip(false);
+                            } catch (err) {
+                              console.error("Failed to dismiss AI tip:", err);
+                              setShowAITip(false);
+                            }
+                          }}
+                        />
+                      )}
+                      <QuickAddBar
+                        categories={categories}
+                        selectedCurrency={selectedCurrency}
+                        onExpenseAdd={handleQuickAddExpense}
+                        addToast={addToast}
+                        showAITip={showAITip}
+                        onAITipDismiss={async () => {
+                          if (!showAITip) return;
+                          try {
+                            await saveUserDoc(user.uid, {
+                              onboarding: { aiTipDismissed: true },
+                            });
+                            setShowAITip(false);
+                          } catch (err) {
+                            console.error("Failed to dismiss AI tip:", err);
+                            setShowAITip(false);
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
 
                   <div
