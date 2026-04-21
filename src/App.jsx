@@ -1764,8 +1764,9 @@ export default function ExpenseTracker() {
   useEffect(() => {
     if (!user || recurringExpenses.length === 0) return;
     const hasNoExpenses = expenses.length === 0;
-    const hasRecurring = recurringExpenses.length > 0;
-    if (hasNoExpenses && hasRecurring) {
+    const alreadyApplied =
+      localStorage.getItem(`ancy-recurring-applied-${currentPeriodKey}`) === "true";
+    if (hasNoExpenses && !alreadyApplied) {
       setRecurringBanner(true);
       const allSelected = {};
       recurringExpenses.forEach((_, i) => {
@@ -2110,10 +2111,20 @@ export default function ExpenseTracker() {
       return;
     }
     const today = new Date().toISOString().slice(0, 10);
+    const newItems = toAdd.filter(
+      (r) =>
+        !expenses.some(
+          (e) =>
+            e.description === r.description &&
+            e.amount === r.amount &&
+            e.category === r.category,
+        ),
+    );
+    const skipped = toAdd.length - newItems.length;
     setState((s) => ({
       ...s,
       expenses: [
-        ...toAdd.map((r) => ({
+        ...newItems.map((r) => ({
           id: crypto.randomUUID(),
           date: today,
           category: r.category,
@@ -2123,12 +2134,14 @@ export default function ExpenseTracker() {
         ...(s.expenses || []),
       ],
     }));
-    addToast(
-      `${toAdd.length} recurring expense${toAdd.length > 1 ? "s" : ""} added!`,
-      "success",
-    );
+    const msg =
+      skipped > 0
+        ? `${newItems.length} added, ${skipped} already existed`
+        : `${newItems.length} expense${newItems.length !== 1 ? "s" : ""} added!`;
+    addToast(msg, "success");
     setRecurringReviewOpen(false);
     setRecurringBanner(false);
+    localStorage.setItem(`ancy-recurring-applied-${currentPeriodKey}`, "true");
   }
   function setBudget(category, value) {
     const amt = Number(value);
@@ -2453,6 +2466,16 @@ export default function ExpenseTracker() {
           selectedCurrency={selectedCurrency}
           onSave={editExpense}
           onCancel={() => setEditingExpense(null)}
+        />
+
+        <RecurringReviewModal
+          open={recurringReviewOpen}
+          onClose={() => setRecurringReviewOpen(false)}
+          recurringExpenses={recurringExpenses}
+          selectedRecurring={selectedRecurring}
+          setSelectedRecurring={setSelectedRecurring}
+          onConfirm={applyRecurringExpenses}
+          selectedCurrency={selectedCurrency}
         />
 
         <div className="relative mx-auto max-w-7xl">
