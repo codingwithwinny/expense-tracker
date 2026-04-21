@@ -53,6 +53,7 @@ import {
   Zap,
   Loader2,
   Pencil,
+  ChevronDown,
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
@@ -60,6 +61,38 @@ function colorFor(name) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return COLORS[h % COLORS.length];
+}
+
+function groupExpensesByDate(expenses) {
+  const groups = {};
+  expenses.forEach((e) => {
+    const dateKey = new Date(e.date).toDateString();
+    if (!groups[dateKey]) groups[dateKey] = [];
+    groups[dateKey].push(e);
+  });
+  return Object.entries(groups)
+    .map(([dateKey, items]) => ({
+      dateKey,
+      date: new Date(dateKey),
+      items,
+      total: items.reduce((sum, e) => sum + Number(e.amount || 0), 0),
+    }))
+    .sort((a, b) => b.date - a.date);
+}
+
+function formatDateHeader(date) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(date);
+  target.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((today - target) / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  return target.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: target.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
+  });
 }
 
 const fadeUp = {
@@ -1296,6 +1329,8 @@ export default function ExpenseTracker() {
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState("");
   const [editingExpense, setEditingExpense] = useState(null);
+  const [collapsedDates, setCollapsedDates] = useState(new Set());
+  const [showOlderExpenses, setShowOlderExpenses] = useState(false);
 
   useEffect(() => {
     const handleAuthError = () =>
@@ -2571,62 +2606,101 @@ export default function ExpenseTracker() {
                         No expenses yet.
                       </p>
                     ) : (
-                      <AnimatePresence>
-                        {expenses.map((e) => (
-                          <motion.div
-                            key={e.id}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className={`flex items-start justify-between gap-3 px-3 py-3 rounded-xl border ${t.itemBg}`}
-                          >
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className="h-2 w-2 rounded-full shrink-0"
-                                  style={{ background: colorFor(e.category) }}
-                                />
-                                <span
-                                  className={`text-sm font-medium ${t.text}`}
-                                >
-                                  {e.category}
-                                </span>
-                              </div>
-                              <p className={`text-xs mt-0.5 ${t.textFaint}`}>
-                                {new Date(e.date).toLocaleDateString()}
-                              </p>
-                              {e.description && (
-                                <p className={`text-xs mt-0.5 ${t.textMuted}`}>
-                                  {e.description}
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span
-                                className={`text-sm font-semibold ${t.text}`}
-                              >
-                                {fmt(
-                                  e.amount,
-                                  selectedCurrency.code,
-                                  selectedCurrency.locale,
-                                )}
-                              </span>
+                      (() => {
+                        const grouped = groupExpensesByDate(expenses);
+                        const visibleGroups = showOlderExpenses ? grouped : grouped.slice(0, 5);
+                        return (
+                          <>
+                            {visibleGroups.map((group) => {
+                              const isCollapsed = collapsedDates.has(group.dateKey);
+                              return (
+                                <div key={group.dateKey} className="space-y-2">
+                                  <button
+                                    onClick={() => {
+                                      const next = new Set(collapsedDates);
+                                      if (isCollapsed) next.delete(group.dateKey);
+                                      else next.add(group.dateKey);
+                                      setCollapsedDates(next);
+                                    }}
+                                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg ${dark ? "bg-white/5 hover:bg-white/10" : "bg-black/5 hover:bg-black/10"} transition-colors`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <ChevronDown
+                                        className={`h-4 w-4 transition-transform ${isCollapsed ? "-rotate-90" : ""} ${t.textMuted}`}
+                                      />
+                                      <span className={`text-sm font-semibold ${t.text}`}>
+                                        {formatDateHeader(group.date)}
+                                      </span>
+                                      <span className={`text-xs ${t.textFaint}`}>
+                                        ({group.items.length})
+                                      </span>
+                                    </div>
+                                    <span className={`text-sm font-semibold ${t.text}`}>
+                                      {fmt(group.total, selectedCurrency.code, selectedCurrency.locale)}
+                                    </span>
+                                  </button>
+                                  <AnimatePresence>
+                                    {!isCollapsed &&
+                                      group.items.map((e) => (
+                                        <motion.div
+                                          key={e.id}
+                                          initial={{ opacity: 0, height: 0 }}
+                                          animate={{ opacity: 1, height: "auto" }}
+                                          exit={{ opacity: 0, height: 0 }}
+                                          className={`flex items-start justify-between gap-3 px-3 py-3 rounded-xl border ${t.itemBg}`}
+                                        >
+                                          <div>
+                                            <div className="flex items-center gap-2">
+                                              <span
+                                                className="h-2 w-2 rounded-full shrink-0"
+                                                style={{ background: colorFor(e.category) }}
+                                              />
+                                              <span className={`text-sm font-medium ${t.text}`}>
+                                                {e.category}
+                                              </span>
+                                            </div>
+                                            {e.description && (
+                                              <p className={`text-xs mt-0.5 ${t.textMuted}`}>
+                                                {e.description}
+                                              </p>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <span className={`text-sm font-semibold ${t.text}`}>
+                                              {fmt(e.amount, selectedCurrency.code, selectedCurrency.locale)}
+                                            </span>
+                                            <button
+                                              onClick={() => setEditingExpense(e)}
+                                              className={`transition-colors ${dark ? "text-gray-600 hover:text-indigo-400" : "text-gray-300 hover:text-indigo-400"}`}
+                                            >
+                                              <Pencil className="h-3.5 w-3.5" />
+                                            </button>
+                                            <button
+                                              onClick={() => removeExpense(e.id)}
+                                              className={`transition-colors ${dark ? "text-gray-600 hover:text-red-400" : "text-gray-300 hover:text-red-400"}`}
+                                            >
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                            </button>
+                                          </div>
+                                        </motion.div>
+                                      ))}
+                                  </AnimatePresence>
+                                </div>
+                              );
+                            })}
+                            {grouped.length > 5 && (
                               <button
-                                onClick={() => setEditingExpense(e)}
-                                className={`transition-colors ${dark ? "text-gray-600 hover:text-indigo-400" : "text-gray-300 hover:text-indigo-400"}`}
+                                onClick={() => setShowOlderExpenses(!showOlderExpenses)}
+                                className={`w-full py-2 text-xs font-medium ${t.textMuted} hover:${t.text} transition-colors`}
                               >
-                                <Pencil className="h-3.5 w-3.5" />
+                                {showOlderExpenses
+                                  ? "Show less"
+                                  : `Show ${grouped.length - 5} older ${grouped.length - 5 === 1 ? "day" : "days"}`}
                               </button>
-                              <button
-                                onClick={() => removeExpense(e.id)}
-                                className={`transition-colors ${dark ? "text-gray-600 hover:text-red-400" : "text-gray-300 hover:text-red-400"}`}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </AnimatePresence>
+                            )}
+                          </>
+                        );
+                      })()
                     )}
                   </div>
 
@@ -2651,68 +2725,110 @@ export default function ExpenseTracker() {
                       <tbody>
                         {expenses.length === 0 ? (
                           <tr>
-                            <td
-                              colSpan={5}
-                              className={`py-8 text-center text-xs ${t.textFaint}`}
-                            >
+                            <td colSpan={5} className={`py-8 text-center text-xs ${t.textFaint}`}>
                               No expenses yet. Add your first one above.
                             </td>
                           </tr>
                         ) : (
-                          <AnimatePresence>
-                            {expenses.map((e) => (
-                              <motion.tr
-                                key={e.id}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className={`border-b transition-colors group ${dark ? "border-white/5 hover:bg-white/5" : "border-gray-100/60 hover:bg-white/40"}`}
-                              >
-                                <td className={`py-3 pl-2 ${t.textMuted}`}>
-                                  {new Date(e.date).toLocaleDateString()}
-                                </td>
-                                <td className="py-3">
-                                  <span className="flex items-center gap-1.5">
-                                    <span
-                                      className="h-2 w-2 rounded-full shrink-0"
-                                      style={{
-                                        background: colorFor(e.category),
-                                      }}
-                                    />
-                                    <span className={t.text}>{e.category}</span>
-                                  </span>
-                                </td>
-                                <td className={`py-3 ${t.textMuted}`}>
-                                  {e.description}
-                                </td>
-                                <td
-                                  className={`py-3 text-right font-semibold ${t.text}`}
-                                >
-                                  {fmt(
-                                    e.amount,
-                                    selectedCurrency.code,
-                                    selectedCurrency.locale,
-                                  )}
-                                </td>
-                                <td className="py-3 text-right pr-2">
-                                  <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                      onClick={() => setEditingExpense(e)}
-                                      className={`transition-colors ${dark ? "text-gray-600 hover:text-indigo-400" : "text-gray-300 hover:text-indigo-400"}`}
-                                    >
-                                      <Pencil className="h-3.5 w-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={() => removeExpense(e.id)}
-                                      className={`transition-colors ${dark ? "text-gray-600 hover:text-red-400" : "text-gray-300 hover:text-red-400"}`}
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </motion.tr>
-                            ))}
-                          </AnimatePresence>
+                          (() => {
+                            const grouped = groupExpensesByDate(expenses);
+                            const visibleGroups = showOlderExpenses ? grouped : grouped.slice(0, 5);
+                            return (
+                              <>
+                                {visibleGroups.map((group) => {
+                                  const isCollapsed = collapsedDates.has(group.dateKey);
+                                  return (
+                                    <React.Fragment key={group.dateKey}>
+                                      <tr
+                                        className={`cursor-pointer ${dark ? "bg-white/5 hover:bg-white/10" : "bg-black/5 hover:bg-black/10"} transition-colors`}
+                                        onClick={() => {
+                                          const next = new Set(collapsedDates);
+                                          if (isCollapsed) next.delete(group.dateKey);
+                                          else next.add(group.dateKey);
+                                          setCollapsedDates(next);
+                                        }}
+                                      >
+                                        <td colSpan={3} className="py-2 pl-2">
+                                          <div className="flex items-center gap-2">
+                                            <ChevronDown
+                                              className={`h-4 w-4 transition-transform ${isCollapsed ? "-rotate-90" : ""} ${t.textMuted}`}
+                                            />
+                                            <span className={`text-sm font-semibold ${t.text}`}>
+                                              {formatDateHeader(group.date)}
+                                            </span>
+                                            <span className={`text-xs ${t.textFaint}`}>
+                                              ({group.items.length} {group.items.length === 1 ? "expense" : "expenses"})
+                                            </span>
+                                          </div>
+                                        </td>
+                                        <td className={`py-2 text-right font-semibold ${t.text}`}>
+                                          {fmt(group.total, selectedCurrency.code, selectedCurrency.locale)}
+                                        </td>
+                                        <td className="py-2 pr-2"></td>
+                                      </tr>
+                                      {!isCollapsed &&
+                                        group.items.map((e) => (
+                                          <motion.tr
+                                            key={e.id}
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            className={`border-b transition-colors group ${dark ? "border-white/5 hover:bg-white/5" : "border-gray-100/60 hover:bg-white/40"}`}
+                                          >
+                                            <td className={`py-3 pl-2 ${t.textMuted}`}>
+                                              {new Date(e.date).toLocaleDateString()}
+                                            </td>
+                                            <td className="py-3">
+                                              <span className="flex items-center gap-1.5">
+                                                <span
+                                                  className="h-2 w-2 rounded-full shrink-0"
+                                                  style={{ background: colorFor(e.category) }}
+                                                />
+                                                <span className={t.text}>{e.category}</span>
+                                              </span>
+                                            </td>
+                                            <td className={`py-3 ${t.textMuted}`}>{e.description}</td>
+                                            <td className={`py-3 text-right font-semibold ${t.text}`}>
+                                              {fmt(e.amount, selectedCurrency.code, selectedCurrency.locale)}
+                                            </td>
+                                            <td className="py-3 text-right pr-2">
+                                              <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                  onClick={() => setEditingExpense(e)}
+                                                  className={`transition-colors ${dark ? "text-gray-600 hover:text-indigo-400" : "text-gray-300 hover:text-indigo-400"}`}
+                                                >
+                                                  <Pencil className="h-3.5 w-3.5" />
+                                                </button>
+                                                <button
+                                                  onClick={() => removeExpense(e.id)}
+                                                  className={`transition-colors ${dark ? "text-gray-600 hover:text-red-400" : "text-gray-300 hover:text-red-400"}`}
+                                                >
+                                                  <Trash2 className="h-3.5 w-3.5" />
+                                                </button>
+                                              </div>
+                                            </td>
+                                          </motion.tr>
+                                        ))}
+                                    </React.Fragment>
+                                  );
+                                })}
+                                {grouped.length > 5 && (
+                                  <tr>
+                                    <td colSpan={5} className="py-2 text-center">
+                                      <button
+                                        onClick={() => setShowOlderExpenses(!showOlderExpenses)}
+                                        className={`text-xs font-medium ${t.textMuted} hover:${t.text} transition-colors`}
+                                      >
+                                        {showOlderExpenses
+                                          ? "Show less"
+                                          : `Show ${grouped.length - 5} older ${grouped.length - 5 === 1 ? "day" : "days"}`}
+                                      </button>
+                                    </td>
+                                  </tr>
+                                )}
+                              </>
+                            );
+                          })()
                         )}
                       </tbody>
                     </table>
