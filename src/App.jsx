@@ -13,7 +13,7 @@ import {
   MAX_CATEGORY_NAME_LEN,
   COLORS,
 } from "@/lib/constants";
-import { getSpendingInsightsFn, parseExpenseFn, loadUserDoc, saveUserDoc } from "@/lib/firebase";
+import { getSpendingInsightsFn, parseExpenseFn, loadUserDoc, saveUserDoc, loadMonth } from "@/lib/firebase";
 
 import AuthButtons from "@/components/AuthButtons";
 import AuthPage from "@/components/AuthPage";
@@ -55,7 +55,7 @@ import {
   Pencil,
   ChevronDown,
 } from "lucide-react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 
 function colorFor(name) {
   let h = 0;
@@ -1778,6 +1778,55 @@ export default function ExpenseTracker() {
     }
   }, [currentPeriodKey, recurringExpenses.length]);
 
+  useEffect(() => {
+    if (!user?.uid) return;
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const monthKeys = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    });
+    setTrendLoading(true);
+    (async () => {
+      try {
+        const results = await Promise.all(
+          monthKeys.map(async (key) => {
+            if (key === todayKey && key === currentPeriodKey) {
+              return { key, total: totals.totalExp };
+            }
+            try {
+              const data = await loadMonth(user.uid, key);
+              const total = (data.expenses || []).reduce(
+                (sum, e) => sum + (Number(e.amount) || 0),
+                0,
+              );
+              return { key, total };
+            } catch {
+              return { key, total: 0 };
+            }
+          }),
+        );
+        setTrendData(
+          [...results].reverse().map((r) => {
+            const [year, month] = r.key.split("-");
+            const d = new Date(Number(year), Number(month) - 1, 1);
+            return {
+              month: d.toLocaleDateString("en-IN", {
+                month: "short",
+                year: "numeric",
+              }),
+              total: r.total,
+            };
+          }).filter((r) => r.total > 0),
+        );
+      } catch {
+        // silent
+      } finally {
+        setTrendLoading(false);
+      }
+    })();
+  }, [user?.uid, totals.totalExp]);
+
   const [source, setSource] = useState({ name: "Salary", amount: "" });
   const [exp, setExp] = useState({
     date: new Date().toISOString().slice(0, 10),
@@ -1790,6 +1839,9 @@ export default function ExpenseTracker() {
   const [recurringBanner, setRecurringBanner] = useState(false);
   const [recurringReviewOpen, setRecurringReviewOpen] = useState(false);
   const [selectedRecurring, setSelectedRecurring] = useState({});
+
+  const [trendData, setTrendData] = useState([]);
+  const [trendLoading, setTrendLoading] = useState(false);
 
   const [newCat, setNewCat] = useState("");
   const [catError, setCatError] = useState("");
@@ -3572,6 +3624,76 @@ export default function ExpenseTracker() {
                         })}
                       </div>
                     </>
+                  )}
+                </GlassCard>
+              </motion.div>
+
+              {/* Spending Trends */}
+              <motion.div {...stagger(3)}>
+                <GlassCard className="p-5">
+                  <SectionTitle icon={TrendingUp}>Spending Trends</SectionTitle>
+                  <p className={`text-xs mb-4 -mt-1 ${t.textFaint}`}>
+                    Your total spending over the last 6 months
+                  </p>
+                  {trendLoading ? (
+                    <div className="flex items-center justify-center h-[220px]">
+                      <Loader2
+                        className={`h-5 w-5 animate-spin ${dark ? "text-indigo-400" : "text-indigo-500"}`}
+                      />
+                    </div>
+                  ) : trendData.length === 0 ? (
+                    <div className="flex items-center justify-center h-[220px]">
+                      <p className={`text-xs ${t.textFaint}`}>No trend data yet</p>
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <AreaChart
+                        data={trendData}
+                        margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
+                      >
+                        <defs>
+                          <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
+                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke={dark ? "#ffffff10" : "#00000010"}
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="month"
+                          tick={{ fill: dark ? "#9ca3af" : "#6b7280", fontSize: 11 }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <YAxis hide={true} />
+                        <Tooltip
+                          formatter={(value) => [
+                            fmt(Number(value), selectedCurrency.code, selectedCurrency.locale),
+                            "Spending",
+                          ]}
+                          labelFormatter={(label) => label}
+                          labelStyle={{ color: "#a5b4fc", fontWeight: 600 }}
+                          contentStyle={{
+                            borderRadius: 12,
+                            border: "none",
+                            boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+                            background: dark ? "#1e2235" : "#fff",
+                            color: dark ? "#e2e8f0" : "#1f2937",
+                          }}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="total"
+                          stroke="#6366f1"
+                          fill="url(#trendGradient)"
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
                   )}
                 </GlassCard>
               </motion.div>
