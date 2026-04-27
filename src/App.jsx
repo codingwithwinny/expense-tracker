@@ -13,7 +13,9 @@ import {
   MAX_CATEGORY_NAME_LEN,
   COLORS,
 } from "@/lib/constants";
-import { getSpendingInsightsFn, parseExpenseFn, loadUserDoc, saveUserDoc, loadMonth } from "@/lib/firebase";
+import { getSpendingInsightsFn, parseExpenseFn, loadUserDoc, saveUserDoc, loadMonth, saveMonth } from "@/lib/firebase";
+import BankImportModal from "@/components/BankImportModal";
+import InsightsModal from "@/components/InsightsModal";
 
 import AuthButtons from "@/components/AuthButtons";
 import AuthPage from "@/components/AuthPage";
@@ -54,8 +56,9 @@ import {
   Loader2,
   Pencil,
   ChevronDown,
+  Upload,
 } from "lucide-react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
 
 function colorFor(name) {
   let h = 0;
@@ -172,8 +175,17 @@ function SectionTitle({ icon: Icon, children, iconColor = "text-indigo-500" }) {
   );
 }
 
-function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip, selectedCurrency }) {
-  const totalSteps = 5;
+function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip, selectedCurrency, setSelectedCurrency }) {
+  const totalSteps = 6;
+  const CURRENCY_OPTIONS = [
+    { code: "INR", flag: "🇮🇳", symbol: "₹" },
+    { code: "USD", flag: "🇺🇸", symbol: "$" },
+    { code: "EUR", flag: "🇪🇺", symbol: "€" },
+    { code: "GBP", flag: "🇬🇧", symbol: "£" },
+    { code: "AED", flag: "🇦🇪", symbol: "د.إ" },
+    { code: "SGD", flag: "🇸🇬", symbol: "S$" },
+  ];
+  const [showCurrencyGrid, setShowCurrencyGrid] = React.useState(false);
   const COMMON_CATEGORIES = [
     { name: "Groceries", emoji: "🛒" },
     { name: "Rent", emoji: "🏠" },
@@ -201,8 +213,8 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
     }
   };
 
-  const canProceedStep2 = data.incomeAmount && Number(data.incomeAmount) > 0;
-  const canProceedStep3 = (data.selectedCategories || []).length > 0;
+  const canProceedStep3 = data.incomeAmount && Number(data.incomeAmount) > 0;
+  const canProceedStep4 = (data.selectedCategories || []).length > 0;
 
   const bg = dark ? "bg-[#12141f]" : "bg-gradient-to-br from-slate-50 to-indigo-50";
   const textMain = dark ? "text-white" : "text-gray-900";
@@ -261,6 +273,75 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
             {step === 2 && (
               <div className="space-y-6">
                 <div className="text-center">
+                  <div className="text-5xl mb-3">🌐</div>
+                  <h2 className={`text-2xl font-bold ${textMain}`}>What currency do you use?</h2>
+                  <p className={`text-sm mt-2 ${textMuted}`}>
+                    We detected this based on your location — change it if needed.
+                  </p>
+                </div>
+                <div className="flex flex-col items-center gap-4">
+                  <div className={`px-8 py-5 rounded-2xl ${dark ? "bg-white/5 border border-white/10" : "bg-white border border-gray-100 shadow-sm"} text-center`}>
+                    <div className="text-5xl mb-2">{selectedCurrency.flag}</div>
+                    <div className={`text-2xl font-bold ${textMain}`}>{selectedCurrency.code}</div>
+                    <div className={`text-lg ${textMuted}`}>{selectedCurrency.symbol}</div>
+                  </div>
+                  <button
+                    onClick={() => setShowCurrencyGrid((v) => !v)}
+                    className={`text-sm font-medium text-indigo-500 hover:text-indigo-400 underline underline-offset-2`}
+                  >
+                    {showCurrencyGrid ? "Hide options" : "Use a different currency"}
+                  </button>
+                  {showCurrencyGrid && (
+                    <div className="grid grid-cols-3 gap-2 w-full">
+                      {CURRENCY_OPTIONS.map((c) => {
+                        const isSelected = selectedCurrency.code === c.code;
+                        return (
+                          <button
+                            key={c.code}
+                            onClick={() => setSelectedCurrency(c.code)}
+                            className={`py-3 px-2 rounded-xl border-2 transition-all active:scale-95 text-center ${
+                              isSelected
+                                ? "border-indigo-500 bg-indigo-500/10"
+                                : dark
+                                ? "border-white/10 hover:border-white/20"
+                                : "border-gray-200 hover:border-gray-300"
+                            }`}
+                          >
+                            <div className="text-2xl mb-1">{c.flag}</div>
+                            <div className={`text-xs font-semibold ${textMain}`}>{c.code}</div>
+                            <div className={`text-xs ${textMuted}`}>{c.symbol}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={back}
+                    className={`flex-1 py-3 rounded-xl border ${dark ? "border-white/10 text-white hover:bg-white/5" : "border-gray-200 text-gray-700 hover:bg-gray-50"} font-medium transition`}
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={next}
+                    className="flex-[2] py-3 rounded-xl font-semibold bg-gradient-to-r from-indigo-500 to-cyan-500 text-white hover:opacity-90 active:scale-[0.98] transition"
+                  >
+                    Next
+                  </button>
+                </div>
+                <button
+                  onClick={next}
+                  className={`w-full text-sm ${textMuted} hover:underline`}
+                >
+                  Skip this step
+                </button>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="space-y-6">
+                <div className="text-center">
                   <div className="text-5xl mb-3">💰</div>
                   <h2 className={`text-2xl font-bold ${textMain}`}>What's your monthly income?</h2>
                   <p className={`text-sm mt-2 ${textMuted}`}>
@@ -300,9 +381,9 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
                   </button>
                   <button
                     onClick={next}
-                    disabled={!canProceedStep2}
+                    disabled={!canProceedStep3}
                     className={`flex-[2] py-3 rounded-xl font-semibold transition ${
-                      canProceedStep2
+                      canProceedStep3
                         ? "bg-gradient-to-r from-indigo-500 to-cyan-500 text-white hover:opacity-90 active:scale-[0.98]"
                         : "bg-gray-300 text-gray-500 cursor-not-allowed"
                     }`}
@@ -319,7 +400,7 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
               </div>
             )}
 
-            {step === 3 && (
+            {step === 4 && (
               <div className="space-y-6">
                 <div className="text-center">
                   <div className="text-5xl mb-3">🎯</div>
@@ -358,9 +439,9 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
                   </button>
                   <button
                     onClick={next}
-                    disabled={!canProceedStep3}
+                    disabled={!canProceedStep4}
                     className={`flex-[2] py-3 rounded-xl font-semibold transition ${
-                      canProceedStep3
+                      canProceedStep4
                         ? "bg-gradient-to-r from-indigo-500 to-cyan-500 text-white hover:opacity-90 active:scale-[0.98]"
                         : "bg-gray-300 text-gray-500 cursor-not-allowed"
                     }`}
@@ -371,7 +452,7 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
               </div>
             )}
 
-            {step === 4 && (
+            {step === 5 && (
               <div className="space-y-6">
                 <div className="text-center">
                   <div className="text-5xl mb-3">🏆</div>
@@ -427,7 +508,7 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
               </div>
             )}
 
-            {step === 5 && (
+            {step === 6 && (
               <div className="text-center space-y-6">
                 <motion.div
                   initial={{ scale: 0 }}
@@ -734,117 +815,6 @@ function ThemeToggle() {
   );
 }
 
-function AIInsightsModal({ open, onClose, insights, loading, error }) {
-  const { dark } = useTheme();
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (!v) onClose();
-      }}
-    >
-      <DialogContent
-        className={`max-w-lg rounded-2xl ${dark ? "bg-[#1e2235] border-white/10" : ""}`}
-      >
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-violet-400" />
-            <span className={dark ? "text-gray-100" : "text-gray-800"}>
-              AI Spending Insights
-            </span>
-          </DialogTitle>
-          <DialogDescription className={dark ? "text-gray-400" : ""}>
-            Powered by Claude AI — personalized just for you
-          </DialogDescription>
-        </DialogHeader>
-        <div className="mt-2">
-          {loading && (
-            <div className="flex flex-col items-center justify-center py-10 gap-3">
-              <Loader2 className="h-8 w-8 text-violet-400 animate-spin" />
-              <p
-                className={`text-sm ${dark ? "text-gray-400" : "text-gray-500"}`}
-              >
-                Analyzing your spending...
-              </p>
-            </div>
-          )}
-          {error && (
-            <div className="py-6 text-center">
-              <p className="text-red-400 text-sm">{error}</p>
-            </div>
-          )}
-          {insights && !loading && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <div
-                className={`p-4 rounded-2xl border mb-4 ${dark ? "bg-violet-500/10 border-violet-500/20" : "bg-violet-50 border-violet-100"}`}
-              >
-                <p
-                  className={`text-sm leading-relaxed whitespace-pre-wrap ${dark ? "text-gray-200" : "text-gray-700"}`}
-                >
-                  {insights.insights}
-                </p>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  {
-                    label: "Total Spent",
-                    value: insights.summary?.totalExpenses?.toLocaleString(),
-                  },
-                  {
-                    label: "Remaining",
-                    value: insights.summary?.remaining?.toLocaleString(),
-                  },
-                  {
-                    label: "Savings Rate",
-                    value: `${insights.summary?.savingsRate}%`,
-                  },
-                ].map((s) => (
-                  <div
-                    key={s.label}
-                    className={`p-3 rounded-xl text-center ${dark ? "bg-white/5 border border-white/5" : "bg-gray-50 border border-gray-100"}`}
-                  >
-                    <p
-                      className={`text-xs mb-1 ${dark ? "text-gray-500" : "text-gray-400"}`}
-                    >
-                      {s.label}
-                    </p>
-                    <p
-                      className={`text-sm font-bold ${dark ? "text-gray-100" : "text-gray-800"}`}
-                    >
-                      {s.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              {insights.summary?.topCategory && (
-                <p
-                  className={`mt-3 text-xs text-center ${dark ? "text-gray-500" : "text-gray-400"}`}
-                >
-                  Top spending category:{" "}
-                  <span className="font-medium text-violet-400">
-                    {insights.summary.topCategory}
-                  </span>
-                </p>
-              )}
-            </motion.div>
-          )}
-        </div>
-        <div className="flex justify-end mt-2">
-          <button
-            onClick={onClose}
-            className={`px-4 py-2 rounded-xl border text-sm transition-colors ${dark ? "border-white/10 text-gray-400 hover:bg-white/5" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
-          >
-            Close
-          </button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast, showAITip, onAITipDismiss }) {
   const { dark } = useTheme();
   const [text, setText] = useState("");
@@ -907,11 +877,21 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast, sho
       addToast("Select at least one expense to add.", "error");
       return;
     }
-    toAdd.forEach((exp) => onExpenseAdd(exp));
-    addToast(
-      `${toAdd.length} expense${toAdd.length > 1 ? "s" : ""} added!`,
-      "success",
-    );
+    const results = toAdd.map((exp) => onExpenseAdd(exp)).filter(Boolean);
+    const crossKeys = [
+      ...new Set(results.filter((r) => r.crossMonth).map((r) => r.targetMonthKey)),
+    ];
+    if (crossKeys.length > 0) {
+      addToast(
+        `Expense${toAdd.length > 1 ? "s" : ""} added to ${crossKeys.join(", ")}`,
+        "info",
+      );
+    } else {
+      addToast(
+        `${toAdd.length} expense${toAdd.length > 1 ? "s" : ""} added!`,
+        "success",
+      );
+    }
     setText("");
     setPreviews([]);
     setSelected({});
@@ -1623,7 +1603,7 @@ export default function ExpenseTracker() {
     customDateRange,
     setCustomDateRange,
   } = useDateSelection();
-  const { selectedCurrency } = useCurrency();
+  const { selectedCurrency, changeCurrency } = useCurrency();
   const { user, loading } = useAuth();
   const { toasts, addToast } = useToast();
 
@@ -1667,6 +1647,7 @@ export default function ExpenseTracker() {
   const [expErrors, setExpErrors] = useState({});
   const [goalErrors, setGoalErrors] = useState({});
   const [insightsOpen, setInsightsOpen] = useState(false);
+  const [bankImportOpen, setBankImportOpen] = useState(false);
   const [insightsData, setInsightsData] = useState(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState("");
@@ -1693,7 +1674,19 @@ export default function ExpenseTracker() {
   }, [addToast]);
 
   useEffect(() => {
+    setUserDoc(null);
+    setShowOnboarding(false);
+    setShowAITip(false);
+    setState({
+      incomeSources: [],
+      expenses: [],
+      catBudgets: {},
+      categories: DEFAULT_CATEGORIES,
+      savingsGoals: [],
+    });
+
     if (!user?.uid) return;
+
     let cancelled = false;
     (async () => {
       try {
@@ -1765,7 +1758,7 @@ export default function ExpenseTracker() {
     if (!user || recurringExpenses.length === 0) return;
     const hasNoExpenses = expenses.length === 0;
     const alreadyApplied =
-      localStorage.getItem(`ancy-recurring-applied-${currentPeriodKey}`) === "true";
+      localStorage.getItem(`ancy-recurring-applied-${user.uid}:${currentPeriodKey}`) === "true";
     if (hasNoExpenses && !alreadyApplied) {
       setRecurringBanner(true);
       const allSelected = {};
@@ -1789,20 +1782,26 @@ export default function ExpenseTracker() {
     setTrendLoading(true);
     (async () => {
       try {
+        // TODO: track per-month income in Firestore; currently falls back to current incomeSources total
+        const currentIncome = totals.income;
         const results = await Promise.all(
           monthKeys.map(async (key) => {
             if (key === todayKey && key === currentPeriodKey) {
-              return { key, total: totals.totalExp };
+              return { key, spending: totals.totalExp, income: currentIncome };
             }
             try {
               const data = await loadMonth(user.uid, key);
-              const total = (data.expenses || []).reduce(
+              const spending = (data.expenses || []).reduce(
                 (sum, e) => sum + (Number(e.amount) || 0),
                 0,
               );
-              return { key, total };
+              const income = (data.incomeSources || []).reduce(
+                (sum, s) => sum + (Number(s.amount) || 0),
+                0,
+              ) || currentIncome;
+              return { key, spending, income };
             } catch {
-              return { key, total: 0 };
+              return { key, spending: 0, income: currentIncome };
             }
           }),
         );
@@ -1815,9 +1814,10 @@ export default function ExpenseTracker() {
                 month: "short",
                 year: "numeric",
               }),
-              total: r.total,
+              spending: r.spending,
+              income: r.income,
             };
-          }).filter((r) => r.total > 0),
+          }).filter((r) => r.spending > 0 || r.income > 0),
         );
       } catch {
         // silent
@@ -1919,7 +1919,7 @@ export default function ExpenseTracker() {
           monthOptions.find((m) => m.key === selectedMonth)?.label ||
           "this month",
       });
-      setInsightsData(result.data);
+      setInsightsData(result.data.insights);
     } catch (err) {
       setInsightsError(
         err.message || "Could not load insights. Please try again.",
@@ -1933,41 +1933,92 @@ export default function ExpenseTracker() {
     const amt = Number(parsed.amount);
     if (!amt || amt <= 0) {
       addToast("Invalid amount parsed.", "error");
-      return;
+      return { crossMonth: false };
     }
-    setState((s) => {
-      const newExpense = {
-        id: crypto.randomUUID(),
-        date: parsed.date,
-        category: parsed.category,
-        description: parsed.description || "",
-        amount: amt,
-      };
-      const updates = { ...s, expenses: [newExpense, ...(s.expenses || [])] };
-      // If Claude detected recurring intent, save to recurring list too
-      if (parsed.isRecurring) {
-        const alreadyExists = (s.recurringExpenses || []).some(
-          (r) =>
-            r.description === parsed.description &&
-            r.amount === amt &&
-            r.category === parsed.category,
-        );
-        if (!alreadyExists) {
-          updates.recurringExpenses = [
-            {
-              id: crypto.randomUUID(),
-              category: parsed.category,
-              description: parsed.description || "",
-              amount: amt,
-              frequency: parsed.frequency || "monthly",
-              createdAt: new Date().toISOString(),
-            },
-            ...(s.recurringExpenses || []),
-          ];
+    const newExpense = {
+      id: crypto.randomUUID(),
+      date: parsed.date,
+      category: parsed.category,
+      description: parsed.description || "",
+      amount: amt,
+    };
+    const targetMonthKey = parsed.date.slice(0, 7);
+    const sameMonth = targetMonthKey === currentPeriodKey;
+
+    if (sameMonth) {
+      setState((s) => {
+        const updates = { ...s, expenses: [newExpense, ...(s.expenses || [])] };
+        if (parsed.isRecurring) {
+          const alreadyExists = (s.recurringExpenses || []).some(
+            (r) =>
+              r.description === parsed.description &&
+              r.amount === amt &&
+              r.category === parsed.category,
+          );
+          if (!alreadyExists) {
+            updates.recurringExpenses = [
+              {
+                id: crypto.randomUUID(),
+                category: parsed.category,
+                description: parsed.description || "",
+                amount: amt,
+                frequency: parsed.frequency || "monthly",
+                createdAt: new Date().toISOString(),
+              },
+              ...(s.recurringExpenses || []),
+            ];
+          }
         }
+        return updates;
+      });
+    } else {
+      const localKey = `expense-tracker:${user.uid}:${targetMonthKey}`;
+      let targetData = {
+        incomeSources: [],
+        expenses: [],
+        catBudgets: {},
+        categories: DEFAULT_CATEGORIES,
+      };
+      const raw = localStorage.getItem(localKey);
+      if (raw) {
+        try {
+          targetData = JSON.parse(raw);
+        } catch { /* ignore malformed cached data */ }
       }
-      return updates;
-    });
+      targetData = {
+        ...targetData,
+        expenses: [newExpense, ...(targetData.expenses || [])],
+      };
+      localStorage.setItem(localKey, JSON.stringify(targetData));
+      saveMonth(user.uid, targetMonthKey, targetData).catch(() => {});
+
+      if (parsed.isRecurring) {
+        setState((s) => {
+          const alreadyExists = (s.recurringExpenses || []).some(
+            (r) =>
+              r.description === parsed.description &&
+              r.amount === amt &&
+              r.category === parsed.category,
+          );
+          if (alreadyExists) return s;
+          return {
+            ...s,
+            recurringExpenses: [
+              {
+                id: crypto.randomUUID(),
+                category: parsed.category,
+                description: parsed.description || "",
+                amount: amt,
+                frequency: parsed.frequency || "monthly",
+                createdAt: new Date().toISOString(),
+              },
+              ...(s.recurringExpenses || []),
+            ],
+          };
+        });
+      }
+    }
+    return { crossMonth: !sameMonth, targetMonthKey };
   }
 
   function addIncomeSource() {
@@ -2022,20 +2073,54 @@ export default function ExpenseTracker() {
       return;
     }
     setExpErrors({});
-    setState((s) => ({
-      ...s,
-      expenses: [
-        {
-          id: crypto.randomUUID(),
-          date: exp.date,
-          category: exp.category,
-          description: exp.description,
-          amount: amt,
-        },
-        ...(s.expenses || []),
-      ],
-    }));
-    // If recurring, save to recurring list
+    const newExpenseObj = {
+      id: crypto.randomUUID(),
+      date: exp.date,
+      category: exp.category,
+      description: exp.description,
+      amount: amt,
+    };
+    const targetMonthKey = exp.date.slice(0, 7);
+    const sameMonth = targetMonthKey === currentPeriodKey;
+
+    if (sameMonth) {
+      setState((s) => ({
+        ...s,
+        expenses: [newExpenseObj, ...(s.expenses || [])],
+      }));
+    } else {
+      const localKey = `expense-tracker:${user.uid}:${targetMonthKey}`;
+      let targetData = {
+        incomeSources: [],
+        expenses: [],
+        catBudgets: {},
+        categories: DEFAULT_CATEGORIES,
+      };
+      const raw = localStorage.getItem(localKey);
+      if (raw) {
+        try {
+          targetData = JSON.parse(raw);
+        } catch { /* ignore malformed cached data */ }
+      }
+      targetData = {
+        ...targetData,
+        expenses: [newExpenseObj, ...(targetData.expenses || [])],
+      };
+      localStorage.setItem(localKey, JSON.stringify(targetData));
+      saveMonth(user.uid, targetMonthKey, targetData).catch(() => {});
+
+      // For custom-range views, append to display state if the date is in range
+      if (currentPeriodKey.startsWith("custom-")) {
+        const suffix = currentPeriodKey.slice(7);
+        const rangeStart = suffix.slice(0, 10);
+        const rangeEnd = suffix.slice(11);
+        if (newExpenseObj.date >= rangeStart && newExpenseObj.date <= rangeEnd) {
+          setState((s) => ({ ...s, expenses: [newExpenseObj, ...(s.expenses || [])] }));
+        }
+      }
+    }
+
+    // If recurring, save to recurring list (always in current period's state)
     if (exp.isRecurring) {
       setState((s) => ({
         ...s,
@@ -2052,11 +2137,16 @@ export default function ExpenseTracker() {
         ],
       }));
       addToast(
-        `Expense added + saved as ${exp.frequency} recurring!`,
-        "success",
+        sameMonth
+          ? `Expense added + saved as ${exp.frequency} recurring!`
+          : `Expense added to ${targetMonthKey} + saved as ${exp.frequency} recurring!`,
+        sameMonth ? "success" : "info",
       );
     } else {
-      addToast("Expense added!", "success");
+      addToast(
+        sameMonth ? "Expense added!" : `Expense added to ${targetMonthKey}`,
+        sameMonth ? "success" : "info",
+      );
     }
     setExp({
       date: new Date().toISOString().slice(0, 10),
@@ -2163,38 +2253,91 @@ export default function ExpenseTracker() {
       return;
     }
     const today = new Date().toISOString().slice(0, 10);
-    const newItems = toAdd.filter(
-      (r) =>
-        !expenses.some(
-          (e) =>
-            e.description === r.description &&
-            e.amount === r.amount &&
-            e.category === r.category,
-        ),
-    );
-    const skipped = toAdd.length - newItems.length;
-    setState((s) => ({
-      ...s,
-      expenses: [
-        ...newItems.map((r) => ({
-          id: crypto.randomUUID(),
-          date: today,
-          category: r.category,
-          description: r.description,
-          amount: r.amount,
-        })),
-        ...(s.expenses || []),
-      ],
-    }));
-    const msg =
-      skipped > 0
-        ? `${newItems.length} added, ${skipped} already existed`
-        : `${newItems.length} expense${newItems.length !== 1 ? "s" : ""} added!`;
-    addToast(msg, "success");
+    const targetMonthKey = today.slice(0, 7);
+    const sameMonth = targetMonthKey === currentPeriodKey;
+
+    if (sameMonth) {
+      const newItems = toAdd.filter(
+        (r) =>
+          !expenses.some(
+            (e) =>
+              e.description === r.description &&
+              e.amount === r.amount &&
+              e.category === r.category,
+          ),
+      );
+      const skipped = toAdd.length - newItems.length;
+      setState((s) => ({
+        ...s,
+        expenses: [
+          ...newItems.map((r) => ({
+            id: crypto.randomUUID(),
+            date: today,
+            category: r.category,
+            description: r.description,
+            amount: r.amount,
+          })),
+          ...(s.expenses || []),
+        ],
+      }));
+      const msg =
+        skipped > 0
+          ? `${newItems.length} added, ${skipped} already existed`
+          : `${newItems.length} expense${newItems.length !== 1 ? "s" : ""} added!`;
+      addToast(msg, "success");
+    } else {
+      const localKey = `expense-tracker:${user.uid}:${targetMonthKey}`;
+      let targetData = {
+        incomeSources: [],
+        expenses: [],
+        catBudgets: {},
+        categories: DEFAULT_CATEGORIES,
+      };
+      const raw = localStorage.getItem(localKey);
+      if (raw) {
+        try {
+          targetData = JSON.parse(raw);
+        } catch { /* ignore malformed cached data */ }
+      }
+      const existingExp = targetData.expenses || [];
+      const newItems = toAdd.filter(
+        (r) =>
+          !existingExp.some(
+            (e) =>
+              e.description === r.description &&
+              e.amount === r.amount &&
+              e.category === r.category,
+          ),
+      );
+      const skipped = toAdd.length - newItems.length;
+      targetData = {
+        ...targetData,
+        expenses: [
+          ...newItems.map((r) => ({
+            id: crypto.randomUUID(),
+            date: today,
+            category: r.category,
+            description: r.description,
+            amount: r.amount,
+          })),
+          ...existingExp,
+        ],
+      };
+      localStorage.setItem(localKey, JSON.stringify(targetData));
+      saveMonth(user.uid, targetMonthKey, targetData).catch(() => {});
+      const msg =
+        skipped > 0
+          ? `${newItems.length} added to ${targetMonthKey}, ${skipped} already existed`
+          : `${newItems.length} expense${newItems.length !== 1 ? "s" : ""} added to ${targetMonthKey}`;
+      addToast(msg, "info");
+    }
+
     setRecurringReviewOpen(false);
     setRecurringBanner(false);
-    localStorage.setItem(`ancy-recurring-applied-${currentPeriodKey}`, "true");
+    localStorage.setItem(`ancy-recurring-applied-${user.uid}:${currentPeriodKey}`, "true");
   }
+
+
   function setBudget(category, value) {
     const amt = Number(value);
     if (amt > selectedCurrency.maxAmount) {
@@ -2403,6 +2546,7 @@ export default function ExpenseTracker() {
             step={onboardingStep}
             setStep={setOnboardingStep}
             selectedCurrency={selectedCurrency}
+            setSelectedCurrency={changeCurrency}
             onComplete={async () => {
               try {
                 await saveUserDoc(user.uid, {
@@ -2504,12 +2648,13 @@ export default function ExpenseTracker() {
           onConfirm={amountDialog.onConfirm}
           onCancel={closeAmountInput}
         />
-        <AIInsightsModal
+        <InsightsModal
           open={insightsOpen}
           onClose={() => setInsightsOpen(false)}
           insights={insightsData}
           loading={insightsLoading}
           error={insightsError}
+          dark={dark}
         />
         <EditExpenseModal
           open={!!editingExpense}
@@ -2528,6 +2673,19 @@ export default function ExpenseTracker() {
           setSelectedRecurring={setSelectedRecurring}
           onConfirm={applyRecurringExpenses}
           selectedCurrency={selectedCurrency}
+        />
+
+        <BankImportModal
+          open={bankImportOpen}
+          onClose={() => setBankImportOpen(false)}
+          dark={dark}
+          categories={categories}
+          selectedCurrency={selectedCurrency}
+          existingExpenses={expenses}
+          user={user}
+          currentPeriodKey={currentPeriodKey}
+          setState={setState}
+          addToast={addToast}
         />
 
         <div className="relative mx-auto max-w-7xl">
@@ -2671,6 +2829,16 @@ export default function ExpenseTracker() {
               >
                 <Sparkles className="h-4 w-4" />
                 <span className="hidden sm:inline">AI Insights</span>
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => setBankImportOpen(true)}
+                className={`h-9 px-4 rounded-full border text-sm flex items-center gap-1.5 shadow-sm transition-colors ${t.pillBg} ${t.textMuted} hover:opacity-80`}
+              >
+                <Upload className="h-4 w-4" />
+                <span className="hidden sm:inline">Import</span>
               </motion.button>
 
               <motion.button
@@ -3633,7 +3801,7 @@ export default function ExpenseTracker() {
                 <GlassCard className="p-5">
                   <SectionTitle icon={TrendingUp}>Spending Trends</SectionTitle>
                   <p className={`text-xs mb-4 -mt-1 ${t.textFaint}`}>
-                    Your total spending over the last 6 months
+                    Spending vs income over the last 6 months
                   </p>
                   {trendLoading ? (
                     <div className="flex items-center justify-center h-[220px]">
@@ -3647,16 +3815,10 @@ export default function ExpenseTracker() {
                     </div>
                   ) : (
                     <ResponsiveContainer width="100%" height={220}>
-                      <AreaChart
+                      <LineChart
                         data={trendData}
                         margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
                       >
-                        <defs>
-                          <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
                         <CartesianGrid
                           strokeDasharray="3 3"
                           stroke={dark ? "#ffffff10" : "#00000010"}
@@ -3670,9 +3832,9 @@ export default function ExpenseTracker() {
                         />
                         <YAxis hide={true} />
                         <Tooltip
-                          formatter={(value) => [
+                          formatter={(value, name) => [
                             fmt(Number(value), selectedCurrency.code, selectedCurrency.locale),
-                            "Spending",
+                            name === "spending" ? "Spending" : "Income",
                           ]}
                           labelFormatter={(label) => label}
                           labelStyle={{ color: "#a5b4fc", fontWeight: 600 }}
@@ -3680,19 +3842,31 @@ export default function ExpenseTracker() {
                             borderRadius: 12,
                             border: "none",
                             boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
-                            background: dark ? "#1e2235" : "#fff",
-                            color: dark ? "#e2e8f0" : "#1f2937",
+                            background: "#1e2235",
+                            color: "#e2e8f0",
                           }}
                         />
-                        <Area
+                        <Legend
+                          verticalAlign="top"
+                          align="right"
+                          wrapperStyle={{ fontSize: 11, paddingBottom: 8 }}
+                          formatter={(value) => value === "spending" ? "Spending" : "Income"}
+                        />
+                        <Line
                           type="monotone"
-                          dataKey="total"
-                          stroke="#6366f1"
-                          fill="url(#trendGradient)"
+                          dataKey="spending"
+                          stroke="#f87171"
                           strokeWidth={2}
                           dot={false}
                         />
-                      </AreaChart>
+                        <Line
+                          type="monotone"
+                          dataKey="income"
+                          stroke="#34d399"
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </LineChart>
                     </ResponsiveContainer>
                   )}
                 </GlassCard>

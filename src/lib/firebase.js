@@ -73,6 +73,11 @@ export const getSpendingInsightsFn = httpsCallable(
 export const parseExpenseFn = httpsCallable(functions, "parseExpense", {
   timeout: 30000,
 });
+export const parseBankStatementFn = httpsCallable(
+  functions,
+  "parseBankStatement",
+  { timeout: 60000 },
+);
 
 /* ---------------------------------------
    Auth helpers

@@ -48,48 +48,208 @@ exports.getSpendingInsights = onCall(
 
     const response = await client.messages.create({
       model: "claude-opus-4-5",
-      max_tokens: 500,
+      max_tokens: 900,
+      system: "You are a personal finance analyst. Return ONLY valid JSON — no markdown, no backticks, no explanation.",
       messages: [
         {
           role: "user",
-          content: `You are a friendly personal finance advisor. Analyze this user's spending for ${period} and give 3-4 short, specific, actionable insights. Be conversational, warm, and specific to their actual numbers. Use simple language.
+          content: `Analyze this user's spending for ${period} and return a JSON object with exactly this structure:
 
+{
+  "anomalies": [
+    {
+      "id": "unique_snake_case_id",
+      "severity": "high" | "medium" | "low",
+      "title": "Short title (3-5 words)",
+      "description": "One sentence explaining the anomaly with specific numbers.",
+      "category": "Category name or null",
+      "amount": <number or null>,
+      "comparedTo": "Brief comparison context or null"
+    }
+  ],
+  "personality": {
+    "archetype": "The [Archetype Name]",
+    "tagline": "One punchy sentence that captures their style.",
+    "summary": "2-3 sentences about their spending personality, patterns, and one concrete suggestion.",
+    "traits": [
+      { "label": "Trait label", "value": "Short value or descriptor" }
+    ]
+  }
+}
+
+Rules:
+- anomalies: 2-4 items. Focus on spikes, unusual patterns, overspending vs income, or unusually good behavior.
+- severity "high" = urgent concern, "medium" = worth noting, "low" = minor observation or positive callout.
+- id: unique short snake_case string for each anomaly (e.g. "high_food_spend", "low_savings_rate").
+- comparedTo: brief context like "typical 20% of income" or "last month avg" — null if not applicable.
+- personality.archetype must be creative and fun (e.g. "The Weekend Splurger", "The Disciplined Saver", "The Foodie Adventurer").
+- traits: 3-4 items with a short label and value (e.g. {"label":"Top Category","value":"Dining"}).
+- Be specific — reference actual categories and amounts from the data.
+- Use ${currency} currency code when mentioning amounts in descriptions.
+
+Data:
 Income: ${currency} ${income.toLocaleString()}
 Total Expenses: ${currency} ${totalExpenses.toLocaleString()}
 Remaining: ${currency} ${remaining.toLocaleString()}
 Savings Rate: ${savingsRate}%
 
 Spending by category:
-${summaryText}
-
-Give insights in this format:
-- Start with one encouraging sentence about their overall spending
-- Point out their biggest spending category and if it seems high or reasonable
-- Give one specific money-saving tip based on their actual data
-- End with a motivating sentence about their savings
-
-Keep it under 150 words. Do not use markdown headers or bullet points. Write in short paragraphs.`,
+${summaryText}`,
         },
       ],
     });
 
+    const summary = {
+      totalExpenses,
+      remaining,
+      savingsRate,
+      topCategory: Object.entries(categoryTotals).sort(
+        (a, b) => b[1] - a[1],
+      )[0]?.[0],
+      categoryTotals,
+    };
+
+    const rawText = response.content[0].text;
+    console.log("[getSpendingInsights] Raw response:", rawText);
+
+    let parsed;
+    try {
+      const firstBrace = rawText.indexOf("{");
+      const lastBrace = rawText.lastIndexOf("}");
+      if (firstBrace === -1 || lastBrace === -1) {
+        throw new Error("No JSON object found in response");
+      }
+      const jsonStr = rawText.slice(firstBrace, lastBrace + 1);
+      parsed = JSON.parse(jsonStr);
+      console.log("[getSpendingInsights] Parsed. Anomalies:", parsed.anomalies?.length, "Personality:", !!parsed.personality);
+    } catch (err) {
+      console.error("[getSpendingInsights] Parse failed:", err.message);
+      console.error("[getSpendingInsights] Raw text:", rawText);
+      return { insights: { anomalies: [], personality: null, summary } };
+    }
+
     return {
-      insights: response.content[0].text,
-      summary: {
-        totalExpenses,
-        remaining,
-        savingsRate,
-        topCategory: Object.entries(categoryTotals).sort(
-          (a, b) => b[1] - a[1],
-        )[0]?.[0],
-        categoryTotals,
+      insights: {
+        anomalies: parsed.anomalies || [],
+        personality: parsed.personality || null,
+        summary,
       },
     };
   },
 );
 
 /* ─────────────────────────────────────────────
-   2. Quick Add — parse multiple expenses from
+   2. Bank Statement Import — parse transactions
+      from extracted statement text
+───────────────────────────────────────────── */
+exports.parseBankStatement = onCall(
+  {
+    secrets: [ANTHROPIC_API_KEY],
+    invoker: "public",
+    timeoutSeconds: 120,
+    memory: "512MiB",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "You must be logged in.");
+    }
+
+    const { fileText, categories = [], currency = "INR" } = request.data;
+
+    if (!fileText?.trim()) {
+      throw new HttpsError("invalid-argument", "No statement text provided.");
+    }
+    if (fileText.length > 200000) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Statement too large (over 200 KB). Try a shorter date range or export fewer months.",
+      );
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
+
+    let response;
+    try {
+      response = await client.messages.create({
+        model: "claude-sonnet-4-5",
+        max_tokens: 4000,
+        system:
+          "You are a bank statement parser. Extract ALL expense/debit transactions. Return ONLY valid JSON — no markdown, no backticks, no explanation.",
+        messages: [
+          {
+            role: "user",
+            content: `Parse this bank statement and extract all DEBIT transactions (expenses only — skip credits, deposits, refunds).
+
+Auto-categorize each into one of: ${categories.join(", ")}. Use "Other" if unsure.
+
+Return ONLY this JSON structure:
+{
+  "transactions": [
+    {"date": "YYYY-MM-DD", "amount": 500, "category": "Groceries", "description": "Short description"}
+  ],
+  "summary": {
+    "bank": "Bank name if identifiable, else null",
+    "period": "Statement period if identifiable, else null",
+    "currency": "${currency}",
+    "total": 0
+  }
+}
+
+Rules:
+- amount: positive number (debit amount, no currency symbols)
+- date: YYYY-MM-DD (use ${today} if unclear)
+- Only include debits/expenses — never credits or deposits
+- description: clean, concise, max 60 chars
+- summary.total: sum of all transaction amounts
+
+Statement:
+${fileText}`,
+          },
+        ],
+      });
+    } catch (apiErr) {
+      const status = apiErr.status;
+      if (status === 401) {
+        throw new HttpsError("unauthenticated", "API key invalid or missing. Please contact support.");
+      }
+      if (status === 429) {
+        throw new HttpsError("resource-exhausted", "AI rate limit reached. Please wait a moment and try again.");
+      }
+      if (status === 404) {
+        throw new HttpsError("not-found", "AI model unavailable. Please contact support.");
+      }
+      if (status === 413 || (apiErr.message || "").includes("too large")) {
+        throw new HttpsError("invalid-argument", "Statement too large for AI processing. Try a shorter date range.");
+      }
+      throw new HttpsError("internal", `AI request failed: ${apiErr.message || "Unknown error"}`);
+    }
+
+    try {
+      const raw = response.content[0].text.trim().replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(raw);
+      const transactions = (parsed.transactions || []).filter(
+        (tx) => Number(tx.amount) > 0 && tx.date,
+      );
+      if (transactions.length === 0) {
+        throw new HttpsError(
+          "not-found",
+          "No debit transactions found. Check that the file contains expense data.",
+        );
+      }
+      return { transactions, summary: parsed.summary || null };
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      throw new HttpsError(
+        "internal",
+        "Could not parse the AI response. Please try a different file format.",
+      );
+    }
+  },
+);
+
+/* ─────────────────────────────────────────────
+   3. Quick Add — parse multiple expenses from
       natural language (max 5 expenses)
 ───────────────────────────────────────────── */
 exports.parseExpense = onCall(

@@ -3,11 +3,35 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { loadMonth, saveMonth } from "@/lib/firebase";
 import { DEFAULT_CATEGORIES } from "@/lib/constants";
 
+function getMonthKeysInRange(startStr, endStr) {
+  const keys = [];
+  const end = new Date(endStr + "T00:00:00");
+  const cur = new Date(startStr + "T00:00:00");
+  cur.setDate(1);
+  while (cur <= end) {
+    keys.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}`);
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return keys;
+}
+
+function parseCustomPeriod(periodKey) {
+  // periodKey: "custom-YYYY-MM-DD-YYYY-MM-DD"
+  const suffix = periodKey.slice(7);
+  const startDate = suffix.slice(0, 10);
+  const endDate = suffix.slice(11);
+  return { startDate, endDate, monthKeys: getMonthKeysInRange(startDate, endDate) };
+}
+
 /**
  * Loads & saves month data (localStorage + Firestore when signed in),
  * and performs a one-time "first-sync" merge:
  *  - If cloud is empty and local has data -> push local up to cloud.
  *  - If local is empty and cloud has data -> pull cloud down to local.
+ *
+ * For custom-range periodKeys (starting with "custom-"), expenses are loaded
+ * from all overlapping YYYY-MM docs and filtered to the date range. Saves
+ * are skipped — each expense lives in its real YYYY-MM doc.
  */
 export default function useMonthData(user, periodKey) {
   const [state, setState] = useState({
@@ -15,8 +39,10 @@ export default function useMonthData(user, periodKey) {
     expenses: [],
     catBudgets: {},
     categories: [],
-    savingsGoals: [], // Add savings goals to state
+    savingsGoals: [],
   });
+
+  const isCustom = periodKey.startsWith("custom-");
 
   // --- 1) Load LOCAL immediately when the period changes
   useEffect(() => {
@@ -30,7 +56,49 @@ export default function useMonthData(user, periodKey) {
       return;
     }
 
-    const raw = localStorage.getItem(`expense-tracker:${periodKey}`);
+    if (isCustom) {
+      const { startDate, endDate, monthKeys } = parseCustomPeriod(periodKey);
+      let mergedExpenses = [];
+      let baseState = {
+        incomeSources: [],
+        catBudgets: {},
+        categories: DEFAULT_CATEGORIES,
+        savingsGoals: [],
+        recurringExpenses: [],
+      };
+      for (const mk of monthKeys) {
+        const raw = localStorage.getItem(`expense-tracker:${user.uid}:${mk}`);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            const exps = (parsed.expenses || []).filter(
+              (e) => e.date >= startDate && e.date <= endDate
+            );
+            mergedExpenses.push(...exps);
+            baseState = {
+              incomeSources: parsed.incomeSources?.length
+                ? parsed.incomeSources
+                : baseState.incomeSources,
+              catBudgets:
+                Object.keys(parsed.catBudgets || {}).length
+                  ? parsed.catBudgets
+                  : baseState.catBudgets,
+              categories:
+                Array.isArray(parsed.categories) && parsed.categories.length
+                  ? parsed.categories
+                  : baseState.categories,
+              savingsGoals: parsed.savingsGoals || baseState.savingsGoals,
+              recurringExpenses:
+                parsed.recurringExpenses || baseState.recurringExpenses,
+            };
+          } catch { /* ignore malformed */ }
+        }
+      }
+      setState({ ...baseState, expenses: mergedExpenses });
+      return;
+    }
+
+    const raw = localStorage.getItem(`expense-tracker:${user.uid}:${periodKey}`);
     if (raw) {
       try {
         const parsed = JSON.parse(raw);
@@ -66,6 +134,46 @@ export default function useMonthData(user, periodKey) {
     let alive = true;
     (async () => {
       if (!user) return;
+
+      if (isCustom) {
+        const { startDate, endDate, monthKeys } = parseCustomPeriod(periodKey);
+        const results = await Promise.all(
+          monthKeys.map((mk) => loadMonth(user.uid, mk))
+        );
+        if (!alive) return;
+        let mergedExpenses = [];
+        let baseState = {
+          incomeSources: [],
+          catBudgets: {},
+          categories: DEFAULT_CATEGORIES,
+          savingsGoals: [],
+          recurringExpenses: [],
+        };
+        results.forEach((data) => {
+          const exps = (data.expenses || []).filter(
+            (e) => e.date >= startDate && e.date <= endDate
+          );
+          mergedExpenses.push(...exps);
+          baseState = {
+            incomeSources: data.incomeSources?.length
+              ? data.incomeSources
+              : baseState.incomeSources,
+            catBudgets:
+              Object.keys(data.catBudgets || {}).length
+                ? data.catBudgets
+                : baseState.catBudgets,
+            categories:
+              Array.isArray(data.categories) && data.categories.length
+                ? data.categories
+                : baseState.categories,
+            savingsGoals: data.savingsGoals || baseState.savingsGoals,
+            recurringExpenses:
+              data.recurringExpenses || baseState.recurringExpenses,
+          };
+        });
+        setState({ ...baseState, expenses: mergedExpenses });
+        return;
+      }
 
       // Snapshot of local when we attempt cloud load
       const localAtLoad = state;
@@ -105,11 +213,11 @@ export default function useMonthData(user, periodKey) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, periodKey]);
 
-  // --- 3) Save to LOCAL whenever state changes (only if user is authenticated)
+  // --- 3) Save to LOCAL whenever state changes (skip for custom periods)
   useEffect(() => {
-    if (user) {
+    if (user && !isCustom) {
       localStorage.setItem(
-        `expense-tracker:${periodKey}`,
+        `expense-tracker:${user.uid}:${periodKey}`,
         JSON.stringify({
           ...state,
           savingsGoals: state.savingsGoals || [],
@@ -118,10 +226,10 @@ export default function useMonthData(user, periodKey) {
     }
   }, [state, periodKey, user]);
 
-  // --- 4) Debounced save to CLOUD when signed in
+  // --- 4) Debounced save to CLOUD when signed in (skip for custom periods)
   const timer = useRef(null);
   useEffect(() => {
-    if (!user) return;
+    if (!user || isCustom) return;
     clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       saveMonth(user.uid, periodKey, state).catch(() => {});
