@@ -47,7 +47,6 @@ import {
   CheckCircle2,
   TrendingUp,
   PiggyBank,
-  LayoutDashboard,
   HelpCircle,
   Sun,
   Moon,
@@ -2748,12 +2747,10 @@ export default function ExpenseTracker() {
               )}
             </AnimatePresence>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                <LayoutDashboard className="h-5 w-5 text-white" />
-              </div>
+              <img src="/brand/ancy-icon-512.png" alt="Ancy" className="w-10 h-10 rounded-2xl" />
               <div>
                 <h1 className={`text-xl font-bold leading-tight ${t.text}`}>
-                  Expense Tracker
+                  Ancy
                 </h1>
                 <p className={`text-xs ${t.textFaint}`}>
                   Your smart way to manage your money.
