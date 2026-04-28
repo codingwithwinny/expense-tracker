@@ -34,3 +34,4 @@ dist-ssr
 Images/
 .firebase/
 dev-dist/
+docs/journal.md
