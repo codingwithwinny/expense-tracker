@@ -38,3 +38,4 @@ Update this list when adding a new ADR.
 | 001 | Dark mode first | Decided | 2026-04-27 |
 | 002 | Claude Sonnet for AI features | Decided | 2026-04-27 |
 | 003 | Date-driven expense routing | Decided | 2026-04-27 |
+| 004 | Disposable Money Model | Decided | 2026-05-04 |
