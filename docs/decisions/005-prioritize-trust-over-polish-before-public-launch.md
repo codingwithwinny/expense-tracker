@@ -142,3 +142,27 @@ The five-blocker list and 6-week sequence will likely shift in detail
 as work happens. The principle — trust before polish, with one
 restrained visual upgrade landing immediately — is the durable part of
 this decision.
+
+## Retrospective: 2026-05-13
+
+Phase 1 implementation revealed an incorrect assumption. The app uses two
+parallel styling systems — Tailwind utility classes (the majority) and a
+CSS custom property layer (small subset). Retargeting only the CSS
+variables changed appearance for ~5% of surfaces; the Tailwind-classed
+majority continued reading from hardcoded color values like #06080F and
+white/[0.035].
+
+A true Warm tokens pass requires either:
+(a) replacing hardcoded dark: classes throughout App.jsx, or
+(b) a global CSS override fighting Tailwind specificity (fragile).
+
+Both are larger than the "1 day" estimate in the original ADR. Rather
+than over-invest in visuals before functional blockers are addressed,
+**all visual work is deferred until after Phase 2 (blockers) ships**.
+Phase 1 is removed from the sequence; Phase 4 (full Warm redesign) will
+include both layout and tokens in a single coherent pass when the
+dashboard is being rebuilt anyway.
+
+This change strengthens the core principle of ADR-005 rather than
+weakening it: when reality disagreed with the plan, trust/reliability
+work won over visual investment.
