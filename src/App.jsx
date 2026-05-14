@@ -34,6 +34,7 @@ import {
 } from "@/lib/firebase";
 import BankImportModal from "@/components/BankImportModal";
 import EmptyState from "@/components/EmptyState";
+import OfflineCapabilitiesCard from "@/components/OfflineCapabilitiesCard";
 import {
   buildExpensesCsv,
   buildFullJsonExport,
@@ -95,6 +96,7 @@ import {
   Calendar,
   FileJson,
   FileSpreadsheet,
+  Cloud,
 } from "lucide-react";
 import {
   PieChart,
@@ -3579,15 +3581,19 @@ export default function ExpenseTracker() {
             left: 0,
             right: 0,
             zIndex: 9999,
-            background: "rgba(251,191,36,0.12)",
-            borderBottom: "1px solid rgba(251,191,36,0.3)",
-            color: "rgb(251,191,36)",
+            background: "var(--c6, rgba(99,102,241,0.08))",
+            borderBottom: "1px solid var(--bd)",
+            color: "var(--tm)",
             fontSize: 12,
             padding: "6px 16px",
-            textAlign: "center",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
             fontWeight: 500,
           }}
         >
+          <Cloud style={{ width: 13, height: 13, flexShrink: 0 }} />
           You're offline. Changes will sync when you reconnect.
         </div>
       )}
@@ -5085,11 +5091,16 @@ export default function ExpenseTracker() {
                                             </div>
                                             <div className="flex items-center gap-2 shrink-0">
                                               {pendingIds.has(e.id) && (
-                                                <CloudUpload
-                                                  className="h-3 w-3 shrink-0"
-                                                  style={{ color: "var(--tf)" }}
-                                                  title="Syncing..."
-                                                />
+                                                <span
+                                                  title="Waiting to sync — will upload when you're back online"
+                                                  className="inline-flex items-center"
+                                                  aria-label="Waiting to sync"
+                                                >
+                                                  <CloudUpload
+                                                    className="h-3 w-3 shrink-0"
+                                                    style={{ color: "var(--tf)" }}
+                                                  />
+                                                </span>
                                               )}
                                               <span
                                                 className="font-semibold"
@@ -5310,11 +5321,16 @@ export default function ExpenseTracker() {
                                                 >
                                                   <span className="flex items-center justify-end gap-1.5">
                                                     {pendingIds.has(e.id) && (
-                                                      <CloudUpload
-                                                        className="h-3 w-3"
-                                                        style={{ color: "var(--tf)" }}
-                                                        title="Syncing..."
-                                                      />
+                                                      <span
+                                                        title="Waiting to sync — will upload when you're back online"
+                                                        className="inline-flex items-center"
+                                                        aria-label="Waiting to sync"
+                                                      >
+                                                        <CloudUpload
+                                                          className="h-3 w-3"
+                                                          style={{ color: "var(--tf)" }}
+                                                        />
+                                                      </span>
                                                     )}
                                                     {fmt(
                                                       e.amount,
@@ -6928,6 +6944,7 @@ export default function ExpenseTracker() {
                     icon: SlidersHorizontal,
                   },
                   { id: "notifications", label: "Notifications", icon: Bell },
+                  { id: "offline", label: "Works offline", icon: Cloud },
                   { id: "data", label: "Your data", icon: Download },
                   { id: "danger", label: "Danger Zone", icon: AlertTriangle },
                   ...(import.meta.env.DEV
@@ -7497,6 +7514,13 @@ export default function ExpenseTracker() {
                                   delivered to your device.
                                 </p>
                               </div>
+                            </GlassCard>
+                          )}
+
+                          {/* ── WORKS OFFLINE ── */}
+                          {activeSettingsSection === "offline" && (
+                            <GlassCard className="p-6">
+                              <OfflineCapabilitiesCard />
                             </GlassCard>
                           )}
 

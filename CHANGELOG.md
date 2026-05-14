@@ -162,3 +162,18 @@ _Work in progress for next release._
 - Distinguishes brand-new-user empty state from filtered-empty state (different copy, different CTAs)
 - Budgets framed as optional ("Ancy works without them") — quiet trust signal
 - No multi-step onboarding flow — first Add Expense IS the onboarding moment
+
+## [2.7.0] — 2026-05-14
+
+### Added — Blocker #4: Data export (ADR-005)
+
+- Export all expense data as CSV (Excel/Sheets/Numbers compatible)
+- Export full backup as JSON (expenses + budgets + income sources + savings goals + categories)
+- Settings → Your data section, positioned above Danger Zone
+- RFC 4180-compliant CSV escaping (commas, quotes, newlines in notes handled correctly)
+- Disabled state for users with zero expenses ("Add some expenses first")
+- Pure client-side — no Cloud Function calls, works offline
+
+### Fixed
+
+- React hook rules violation in ExpenseTracker where new `totalExpenseCount` useMemo was placed after early return — moved to top hooks block (caught by error boundary from Blocker #1)
