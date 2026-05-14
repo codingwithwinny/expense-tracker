@@ -33,6 +33,7 @@ import {
   wipeUserData,
 } from "@/lib/firebase";
 import BankImportModal from "@/components/BankImportModal";
+import EmptyState from "@/components/EmptyState";
 
 import AuthButtons from "@/components/AuthButtons";
 import AuthPage from "@/components/AuthPage";
@@ -84,6 +85,7 @@ import {
   User,
   Bell,
   SlidersHorizontal,
+  Calendar,
 } from "lucide-react";
 import {
   PieChart,
@@ -2761,7 +2763,7 @@ export default function ExpenseTracker() {
       setLimitModal({ open: true, feature: "AI Insights", source: "insights" });
       return;
     }
-    if (expenses.length === 0) {
+    if (expenses.length < 5) {
       setInsightsError("no_data_for_period");
       return;
     }
@@ -4224,6 +4226,21 @@ export default function ExpenseTracker() {
                     </GlassCard>
                   </motion.div>
 
+                  {/* Integration 1: Dashboard empty state */}
+                  {expenses.length === 0 && selectedMonth !== "custom" && (
+                    <motion.div {...stagger(6)}>
+                      <GlassCard className="p-5">
+                        <EmptyState
+                          icon={Receipt}
+                          heading="Let's get the first one in"
+                          subtext="Add an expense — even a small one. Ancy figures out the rest."
+                          ctaLabel="+ Add expense"
+                          onCta={() => setActiveTab("Expenses")}
+                        />
+                      </GlassCard>
+                    </motion.div>
+                  )}
+
                   {/* Income vs Spending area chart */}
                   <motion.div {...stagger(7)}>
                     <GlassCard className="p-5">
@@ -4746,6 +4763,7 @@ export default function ExpenseTracker() {
                             Date
                           </label>
                           <ThemedInput
+                            id="add-expense-date"
                             type="date"
                             value={exp.date}
                             error={!!expErrors.date}
@@ -4898,12 +4916,27 @@ export default function ExpenseTracker() {
                       {/* Mobile list */}
                       <div className="mt-4 md:hidden space-y-2">
                         {expenses.length === 0 ? (
-                          <p
-                            className="text-center text-xs py-4"
-                            style={{ color: "var(--tf)" }}
-                          >
-                            No expenses yet.
-                          </p>
+                          selectedMonth === "custom" ? (
+                            <EmptyState
+                              icon={Calendar}
+                              heading="Nothing here for these dates"
+                              subtext={`No expenses logged between ${customDateRange.start ? new Date(customDateRange.start + "T00:00:00").toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" }) : "start"} and ${customDateRange.end ? new Date(customDateRange.end + "T00:00:00").toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" }) : "end"}.`}
+                              ctaLabel="Change dates"
+                              onCta={() => setActiveTab("Dashboard")}
+                              secondaryLabel="Reset to this month"
+                              onSecondary={() => setSelectedMonth(monthOptions[1]?.key)}
+                              className="py-8 min-h-0"
+                            />
+                          ) : (
+                            <EmptyState
+                              icon={Receipt}
+                              heading="No expenses yet"
+                              subtext="Tap the + button or use Quick Add to log one."
+                              ctaLabel="+ Add expense"
+                              onCta={() => document.getElementById("add-expense-date")?.focus()}
+                              className="py-8 min-h-0"
+                            />
+                          )
                         ) : (
                           (() => {
                             const grouped = groupExpensesByDate(expenses);
@@ -5076,12 +5109,28 @@ export default function ExpenseTracker() {
                           <tbody>
                             {expenses.length === 0 ? (
                               <tr>
-                                <td
-                                  colSpan={5}
-                                  className="py-8 text-center text-xs"
-                                  style={{ color: "var(--tf)" }}
-                                >
-                                  No expenses yet. Add your first one above.
+                                <td colSpan={5}>
+                                  {selectedMonth === "custom" ? (
+                                    <EmptyState
+                                      icon={Calendar}
+                                      heading="Nothing here for these dates"
+                                      subtext={`No expenses logged between ${customDateRange.start ? new Date(customDateRange.start + "T00:00:00").toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" }) : "start"} and ${customDateRange.end ? new Date(customDateRange.end + "T00:00:00").toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" }) : "end"}.`}
+                                      ctaLabel="Change dates"
+                                      onCta={() => setActiveTab("Dashboard")}
+                                      secondaryLabel="Reset to this month"
+                                      onSecondary={() => setSelectedMonth(monthOptions[1]?.key)}
+                                      className="py-8 min-h-0"
+                                    />
+                                  ) : (
+                                    <EmptyState
+                                      icon={Receipt}
+                                      heading="No expenses yet"
+                                      subtext="Tap the + button or use Quick Add to log one."
+                                      ctaLabel="+ Add expense"
+                                      onCta={() => document.getElementById("add-expense-date")?.focus()}
+                                      className="py-8 min-h-0"
+                                    />
+                                  )}
                                 </td>
                               </tr>
                             ) : (
@@ -5447,6 +5496,17 @@ export default function ExpenseTracker() {
                     <p className="text-xs mb-4" style={{ color: "var(--tf)" }}>
                       Set spending limits per category
                     </p>
+                    {/* Integration 5: Budgets empty state */}
+                    {Object.values(catBudgets).every(v => !v || Number(v) === 0) && (
+                      <EmptyState
+                        icon={Wallet}
+                        heading="Set a budget when you're ready"
+                        subtext="Budgets help you spot drift early. They're optional — Ancy works without them."
+                        ctaLabel="Set budgets"
+                        onCta={() => document.querySelector("[data-first-budget]")?.focus()}
+                        className="py-6 min-h-0"
+                      />
+                    )}
                     <div className="space-y-5">
                       {categories.map((c) => {
                         const spent =
@@ -5498,6 +5558,7 @@ export default function ExpenseTracker() {
                               inputMode="numeric"
                               placeholder={`Budget (${selectedCurrency.code})`}
                               value={catBudgets[c] ?? ""}
+                              data-first-budget={c === categories[0] ? "" : undefined}
                               className="w-full px-3 py-2 rounded-xl text-xs transition-all"
                               style={{
                                 background: "var(--c4)",
@@ -6116,37 +6177,16 @@ export default function ExpenseTracker() {
                       </div>
                     )}
 
-                    {/* No data for this period at all */}
+                    {/* Integration 4: Not enough data for insights */}
                     {insightsError === "no_data_for_period" &&
                       !insightsLoading && (
-                        <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
-                          <div
-                            className="w-14 h-14 flex items-center justify-center rounded-2xl"
-                            style={{
-                              background: "var(--c6)",
-                              border: "1px solid var(--bd)",
-                            }}
-                          >
-                            <Sparkles
-                              className="h-6 w-6"
-                              style={{ color: "var(--tf)" }}
-                            />
-                          </div>
-                          <div className="max-w-xs">
-                            <p
-                              className="text-sm font-semibold mb-1"
-                              style={{ color: "var(--tx)" }}
-                            >
-                              No data for this period
-                            </p>
-                            <p
-                              className="text-xs"
-                              style={{ color: "var(--tm)" }}
-                            >
-                              Add some expenses or select a different range.
-                            </p>
-                          </div>
-                        </div>
+                        <EmptyState
+                          icon={Sparkles}
+                          heading="Need a bit more to work with"
+                          subtext={`Insights kick in after about 5 expenses. You have ${expenses.length}.`}
+                          ctaLabel="+ Add expense"
+                          onCta={() => setActiveTab("Expenses")}
+                        />
                       )}
 
                     {/* API error */}
@@ -6188,50 +6228,17 @@ export default function ExpenseTracker() {
                         </GlassCard>
                       )}
 
-                    {/* No expenses yet */}
+                    {/* Integration 4: Zero expenses, insights never attempted */}
                     {!insightsLoading &&
                       !insightsError &&
                       expenses.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-28 gap-4">
-                          <div
-                            className="w-16 h-16 flex items-center justify-center rounded-3xl"
-                            style={{
-                              background:
-                                "linear-gradient(135deg, rgba(167,139,250,0.2), rgba(129,140,248,0.1))",
-                              border: "1px solid rgba(129,140,248,0.3)",
-                            }}
-                          >
-                            <Sparkles
-                              className="h-7 w-7"
-                              style={{ color: "#A78BFA" }}
-                            />
-                          </div>
-                          <div className="text-center max-w-xs">
-                            <p
-                              className="text-base font-semibold mb-1"
-                              style={{ color: "var(--tx)" }}
-                            >
-                              No expenses yet
-                            </p>
-                            <p
-                              className="text-sm"
-                              style={{ color: "var(--tm)" }}
-                            >
-                              Add some expenses first so Claude can analyse your
-                              spending.
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => setActiveTab("Expenses")}
-                            className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white"
-                            style={{
-                              background:
-                                "linear-gradient(135deg, #A78BFA, #818CF8)",
-                            }}
-                          >
-                            Add Expenses
-                          </button>
-                        </div>
+                        <EmptyState
+                          icon={Sparkles}
+                          heading="Need a bit more to work with"
+                          subtext="Insights kick in after about 5 expenses."
+                          ctaLabel="+ Add expense"
+                          onCta={() => setActiveTab("Expenses")}
+                        />
                       )}
 
                     {/* Main content — shown once AI has loaded and we have expenses */}

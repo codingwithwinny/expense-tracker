@@ -135,3 +135,20 @@ _Work in progress for next release._
 - Recurring budget templates — depends on per-month income storage
 - iOS/Android via Capacitor — deferred until web v2 stable
 - Visual redesign (Warm tokens, dashboard layout) — paused per ADR-005 retrospective
+
+## [2.5.0] — 2026-05-14
+
+### Added — Blocker #2: AI cost controls (ADR-005)
+
+- Daily per-user limits on Claude-powered features: 3 insights, 10 quick-add parses, 3 bank statement imports
+- Server-side enforcement in Cloud Functions — counter incremented atomically before each Claude call, throws `resource-exhausted` HttpsError if over limit
+- Per-call cost tracking (input + output tokens × Sonnet 4.5 rates) stored in Firestore at `users/{uid}/usage/{YYYY-MM-DD}` and aggregated monthly at `users/{uid}/usageMonthly/{YYYY-MM}`
+- Limit-reached modal: email-only waitlist capture, "Or come back tomorrow" dismiss, time-until-midnight UTC countdown
+- Quota indicators in UI: "AI Insights · 2/3 today", "{remaining} quick-adds left today"
+- Dev-only usage panel in Settings showing today's calls + spend
+- Waitlist collection at `/waitlist/{autoId}` with email + source + userId + createdAt
+
+### Security
+
+- Firestore rules: `/usage` and `/usageMonthly` are read-only for the user (writes only by Cloud Functions via Admin SDK)
+- `/waitlist` allows create by authenticated user matching `userId`, no read/update/delete
