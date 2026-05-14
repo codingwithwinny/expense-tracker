@@ -4,6 +4,26 @@ service cloud.firestore {
     match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+
+    // Usage tracking — readable by the owner, written only by Cloud Functions
+    match /users/{userId}/usage/{date} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
+    match /users/{userId}/usageMonthly/{month} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // Waitlist — users can submit their own entry, no read/update/delete
+    match /waitlist/{entryId} {
+      allow create: if request.auth != null
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.email is string
+                    && request.resource.data.email.size() < 200;
+      allow read, update, delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

@@ -7,6 +7,8 @@ import useMonthData from "@/hooks/useMonthData";
 import useDateSelection from "@/hooks/useDateSelection";
 import { useCurrency } from "@/hooks/useCurrency.jsx";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { useUsageQuota } from "@/hooks/useUsageQuota";
+import LimitReachedModal from "@/components/LimitReachedModal";
 import {
   fmt,
   buildCSV,
@@ -1427,6 +1429,9 @@ function QuickAddBar({
   showAITip,
   onAITipDismiss,
   isOnline,
+  remainingParse = 10,
+  parseLimits = 10,
+  onLimitReached = () => {},
 }) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1446,6 +1451,10 @@ function QuickAddBar({
     if (!text.trim() || isAtLimit) return;
     if (!isOnline) {
       addToast("AI features need an internet connection. Try again when you're back online.", "info");
+      return;
+    }
+    if (remainingParse <= 0) {
+      onLimitReached();
       return;
     }
     setLoading(true);
@@ -1490,6 +1499,8 @@ function QuickAddBar({
           "AI is unusually slow right now. Try again in a moment.",
           "error",
         );
+      } else if (err.code === "functions/resource-exhausted" && err.details?.limitType) {
+        onLimitReached();
       } else {
         addToast(functionsErrorMsg(err), "error");
       }
@@ -1614,6 +1625,14 @@ function QuickAddBar({
           {loading ? loadingMsg : "Parse"}
         </motion.button>
       </div>
+
+      {remainingParse < 3 && remainingParse >= 0 && (
+        <p className="text-[11px] mt-1" style={{ color: "var(--tf)" }}>
+          {remainingParse === 0
+            ? "No quick-adds left today — resets at midnight UTC"
+            : `${remainingParse} quick-add${remainingParse === 1 ? "" : "s"} left today`}
+        </p>
+      )}
 
       {!previews.length && !loading && (
         <p
@@ -2362,6 +2381,8 @@ export default function ExpenseTracker() {
   const { toasts, addToast } = useToast();
   const isOnline = useNetworkStatus();
   const wasOffline = useRef(false);
+  const { usage: usageQuota, remaining: quotaRemaining, limits: quotaLimits, costToday, costMonth, monthlyUsage } = useUsageQuota(user?.uid);
+  const [limitModal, setLimitModal] = useState({ open: false, feature: "", source: "" });
   const [pendingIds, setPendingIds] = useState(() => new Set());
 
   // Reconnection toast + clear pending sync indicators
@@ -2736,6 +2757,10 @@ export default function ExpenseTracker() {
       addToast("AI features need an internet connection. Try again when you're back online.", "info");
       return;
     }
+    if (quotaRemaining.insights <= 0) {
+      setLimitModal({ open: true, feature: "AI Insights", source: "insights" });
+      return;
+    }
     if (expenses.length === 0) {
       setInsightsError("no_data_for_period");
       return;
@@ -2776,6 +2801,8 @@ export default function ExpenseTracker() {
         setInsightsError(
           "AI is unusually slow right now. Try again in a moment.",
         );
+      } else if (err.code === "functions/resource-exhausted" && err.details?.limitType) {
+        setLimitModal({ open: true, feature: "AI Insights", source: "insights" });
       } else {
         setInsightsError(functionsErrorMsg(err));
       }
@@ -3704,6 +3731,16 @@ export default function ExpenseTracker() {
           setState={setState}
           addToast={addToast}
           isOnline={isOnline}
+          remainingStatements={quotaRemaining.statement}
+          onLimitReached={() => setLimitModal({ open: true, feature: "Statement Import", source: "statement" })}
+        />
+
+        <LimitReachedModal
+          isOpen={limitModal.open}
+          onClose={() => setLimitModal((prev) => ({ ...prev, open: false }))}
+          featureName={limitModal.feature}
+          source={limitModal.source}
+          userId={user?.uid}
         />
 
         {/* ── SIDEBAR ───────────────────────────────────────── */}
@@ -4673,6 +4710,9 @@ export default function ExpenseTracker() {
                             onExpenseAdd={handleQuickAddExpense}
                             addToast={addToast}
                             isOnline={isOnline}
+                            remainingParse={quotaRemaining.parse}
+                            parseLimits={quotaLimits.parse}
+                            onLimitReached={() => setLimitModal({ open: true, feature: "Quick Add", source: "parse" })}
                             showAITip={showAITip}
                             onAITipDismiss={async () => {
                               if (!showAITip) return;
@@ -5975,10 +6015,16 @@ export default function ExpenseTracker() {
                         <div className="flex items-start justify-between flex-wrap gap-4">
                           <div>
                             <p
-                              className="text-[11px] font-bold tracking-[0.14em] uppercase mb-1.5"
+                              className="text-[11px] font-bold tracking-[0.14em] uppercase mb-1.5 flex items-center gap-2"
                               style={{ color: "#A78BFA" }}
                             >
                               AI Insights · {periodLabel}
+                              <span
+                                className="font-medium normal-case tracking-normal"
+                                style={{ color: "var(--tf)", fontSize: 10 }}
+                              >
+                                {quotaRemaining.insights}/{quotaLimits.insights} today
+                              </span>
                             </p>
                             {cachedInsights && !insightsLoading && (
                               <h1
@@ -6816,6 +6862,9 @@ export default function ExpenseTracker() {
                   },
                   { id: "notifications", label: "Notifications", icon: Bell },
                   { id: "danger", label: "Danger Zone", icon: AlertTriangle },
+                  ...(import.meta.env.DEV
+                    ? [{ id: "usage", label: "Usage (dev)", icon: Zap }]
+                    : []),
                 ];
                 return (
                   <div className="flex flex-col md:flex-row gap-0 md:gap-6 w-full max-w-4xl">
@@ -7423,6 +7472,76 @@ export default function ExpenseTracker() {
                                     <Trash2 className="h-4 w-4" />
                                     Reset
                                   </button>
+                                </div>
+                              </div>
+                            </GlassCard>
+                          )}
+
+                          {/* ── USAGE (DEV ONLY) ── */}
+                          {activeSettingsSection === "usage" && import.meta.env.DEV && (
+                            <GlassCard className="p-6">
+                              <h2
+                                className="text-xl font-semibold mb-1"
+                                style={{ color: "var(--tx)" }}
+                              >
+                                Usage
+                              </h2>
+                              <p
+                                className="text-sm mb-6"
+                                style={{ color: "var(--tf)" }}
+                              >
+                                Dev-only — not visible in production.
+                              </p>
+                              <div className="flex flex-col gap-4">
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--tf)" }}>
+                                    Today's calls
+                                  </p>
+                                  <div className="flex flex-col gap-2">
+                                    {[
+                                      { label: "AI Insights", key: "insights" },
+                                      { label: "Quick Add", key: "parse" },
+                                      { label: "Statement Import", key: "statement" },
+                                    ].map(({ label, key }) => (
+                                      <div key={key} className="flex items-center justify-between text-sm">
+                                        <span style={{ color: "var(--tm)" }}>{label}</span>
+                                        <span style={{ color: "var(--tx)" }}>
+                                          {usageQuota[key]} / {quotaLimits[key]}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--tf)" }}>
+                                    Today's cost
+                                  </p>
+                                  <p className="text-sm font-semibold" style={{ color: "var(--tx)" }}>
+                                    ${costToday.toFixed(5)} USD
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--tf)" }}>
+                                    This month
+                                  </p>
+                                  <div className="flex flex-col gap-2">
+                                    {[
+                                      { label: "AI Insights", key: "insights" },
+                                      { label: "Quick Add", key: "parse" },
+                                      { label: "Statement Import", key: "statement" },
+                                    ].map(({ label, key }) => (
+                                      <div key={key} className="flex items-center justify-between text-sm">
+                                        <span style={{ color: "var(--tm)" }}>{label}</span>
+                                        <span style={{ color: "var(--tx)" }}>{monthlyUsage[key]}</span>
+                                      </div>
+                                    ))}
+                                    <div className="flex items-center justify-between text-sm border-t pt-2 mt-1" style={{ borderColor: "var(--bd)" }}>
+                                      <span style={{ color: "var(--tm)" }}>Total cost</span>
+                                      <span className="font-semibold" style={{ color: "var(--tx)" }}>
+                                        ${costMonth.toFixed(5)} USD
+                                      </span>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </GlassCard>

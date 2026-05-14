@@ -13,6 +13,7 @@ export function Select({ value, onValueChange, children }) {
   return (
     <select
       className="field appearance-none pr-8 bg-[url('data:image/svg+xml;utf8,<svg fill=%22%23677%22 height=%2220%22 viewBox=%220 0 20 20%22 width=%2220%22 xmlns=%22http://www.w3.org/2000/svg%22><polygon points=%220,0 20,0 10,12%22/></svg>')] bg-[right_0.6rem_center] bg-no-repeat"
+      style={{ background: 'var(--c3)', color: 'var(--tx)', borderColor: 'var(--bd)' }}
       value={value}
       onChange={(e) => onValueChange?.(e.target.value)}
     >

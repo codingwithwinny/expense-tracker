@@ -1,34 +1,134 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
+@custom-variant dark (&:is(.dark *));
 
-/* ===== Sweet modern palette (soft, pleasing) ===== */
-:root {
-  /* primary gradient */
-  --brand-1: #8b5cf6; /* violet-500 */
-  --brand-2: #22d3ee; /* cyan-400 */
+/* ===== Ancy theme variables ===== */
 
-  /* inks & surfaces */
-  --ink: #1f2937; /* slate-800 */
-  --muted-ink: #64748b; /* slate-500 */
-  --surface: #ffffff;
-  --surface-2: rgba(255, 255, 255, 0.7);
-  --ring: rgba(139, 92, 246, 0.25); /* violet glow */
+/* Dark theme (warm dark) */
+html.ancy-dark {
+  --tx: #F2EDE6;           /* primary text */
+  --tm: #B8B1A6;           /* muted text */
+  --tf: #7C7669;           /* faint text */
 
-  /* subtle page bg */
-  --bg-a: #eef2ff; /* indigo-50 */
-  --bg-b: #f0f9ff; /* sky-50 */
+  --c2: rgba(255,255,255,0.02);
+  --c3: rgba(255,255,255,0.04);
+  --c4: rgba(255,255,255,0.04);
+  --c5: rgba(255,255,255,0.06);
+  --c6: rgba(255,255,255,0.08);
+  --c8: rgba(255,255,255,0.08);
+  --c10: rgba(255,255,255,0.10);
+  --c15: rgba(255,255,255,0.15);
+  --c20: rgba(255,255,255,0.20);
+
+  --bd: rgba(255,255,255,0.05);     /* default border */
+  --bd-soft: rgba(255,255,255,0.03);
+  --bd-med: rgba(255,255,255,0.10);
+  --bd-strong: rgba(255,255,255,0.15);
+  --bd-heavy: rgba(255,255,255,0.20);
+
+  --glass: linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.015) 100%);
+  --glass-bdr: rgba(255,255,255,0.06);
+
+  --modal-bg: linear-gradient(180deg, rgba(20,24,40,0.97) 0%, rgba(10,14,26,0.99) 100%);
+  --modal-bdr: rgba(255,255,255,0.10);
+  --sheet-bg: #1a1b21;
+  --select-bg: #1a1f35;
+
+  --page-bg: #14151a;
+  --aurora: 1;
+
+  --ring: rgba(129, 140, 248, 0.3);
 }
 
-/* Page background – gentle two-tone */
+/* Light theme (warm light) */
+html.ancy-light {
+  --tx: #1a1a18;
+  --tm: #5a5750;
+  --tf: #8a8680;
+
+  --c2: rgba(255,255,255,0.55);
+  --c3: rgba(0,0,0,0.025);
+  --c4: rgba(255,255,255,0.72);
+  --c5: rgba(0,0,0,0.04);
+  --c6: rgba(0,0,0,0.06);
+  --c8: rgba(0,0,0,0.06);
+  --c10: rgba(0,0,0,0.08);
+  --c15: rgba(0,0,0,0.10);
+  --c20: rgba(0,0,0,0.12);
+
+  --bd: rgba(0,0,0,0.06);
+  --bd-soft: rgba(0,0,0,0.03);
+  --bd-med: rgba(0,0,0,0.12);
+  --bd-strong: rgba(0,0,0,0.15);
+  --bd-heavy: rgba(0,0,0,0.18);
+
+  --glass: rgba(255,255,255,0.75);
+  --glass-bdr: rgba(0,0,0,0.08);
+
+  --modal-bg: #ffffff;
+  --modal-bdr: rgba(0,0,0,0.10);
+  --sheet-bg: #ffffff;
+  --select-bg: #ffffff;
+
+  --page-bg: #fafaf7;
+  --aurora: 0;
+
+  --ring: rgba(139, 92, 246, 0.25);
+}
+
+/* ===== Legacy palette vars kept for backwards compat ===== */
+:root {
+  --brand-1: #8b5cf6;
+  --brand-2: #22d3ee;
+  --bg-a: #eef2ff;
+  --bg-b: #f0f9ff;
+
+  /* Fallbacks (dark) — overridden once html.ancy-* class is applied */
+  --tx: #F2EDE6;
+  --tm: #B8B1A6;
+  --tf: #7C7669;
+  --c2: rgba(255,255,255,0.02);
+  --c3: rgba(255,255,255,0.04);
+  --c4: rgba(255,255,255,0.04);
+  --c5: rgba(255,255,255,0.06);
+  --c6: rgba(255,255,255,0.08);
+  --c8: rgba(255,255,255,0.08);
+  --c10: rgba(255,255,255,0.10);
+  --c15: rgba(255,255,255,0.15);
+  --c20: rgba(255,255,255,0.20);
+  --bd: rgba(255,255,255,0.05);
+  --bd-soft: rgba(255,255,255,0.03);
+  --bd-med: rgba(255,255,255,0.10);
+  --bd-strong: rgba(255,255,255,0.15);
+  --bd-heavy: rgba(255,255,255,0.20);
+  --glass: linear-gradient(180deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.015) 100%);
+  --glass-bdr: rgba(255,255,255,0.06);
+  --modal-bg: linear-gradient(180deg, rgba(20,24,40,0.97) 0%, rgba(10,14,26,0.99) 100%);
+  --modal-bdr: rgba(255,255,255,0.10);
+  --sheet-bg: #1a1b21;
+  --select-bg: #1a1f35;
+  --page-bg: #14151a;
+  --ring: rgba(129, 140, 248, 0.3);
+}
+
+/* Page background driven by CSS var */
 body {
   min-height: 100%;
-  background: radial-gradient(
-      1200px 600px at 100% 0%,
-      var(--bg-b),
-      transparent 60%
-    ),
-    radial-gradient(900px 500px at 0% 100%, var(--bg-a), transparent 55%),
-    var(--surface);
-  color: var(--ink);
+  background: var(--page-bg, #14151a);
+  color: var(--tx, #F2EDE6);
+  letter-spacing: -0.011em;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background 0.3s ease, color 0.25s ease;
+}
+
+/* Tabular numbers for all amounts */
+.num,
+[class*="text-"][class*="font-bold"],
+[class*="text-"][class*="font-semibold"] {
+  font-feature-settings: 'tnum', 'ss01';
+  letter-spacing: -0.02em;
 }
 
 /* ------------ helpers to match existing JSX class names ------------ */
@@ -71,26 +171,29 @@ body {
   }
   body {
     @apply antialiased;
-    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, Segoe UI,
-      Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+    letter-spacing: -0.011em;
   }
 }
 
 /* ---- Components ---- */
 @layer components {
-  /* soft cards with a touch of glass */
+  /* soft cards with a touch of glass — theme-aware */
   .glass {
-    @apply rounded-2xl border bg-white/80 shadow-lg backdrop-blur;
-    border-color: rgba(148, 163, 184, 0.25); /* slate-300/25 */
+    @apply rounded-2xl border shadow-lg backdrop-blur;
+    background: var(--glass);
+    border-color: var(--glass-bdr);
   }
 
   /* inputs */
   .field {
-    @apply w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none;
-    border-color: rgba(148, 163, 184, 0.6);
+    @apply w-full rounded-xl border px-3 py-2 text-sm outline-none;
+    background: var(--c3);
+    color: var(--tx);
+    border-color: var(--bd);
   }
   .field:focus {
-    box-shadow: 0 0 0 6px var(--ring);
+    box-shadow: 0 0 0 4px var(--ring);
     border-color: transparent;
   }
 
@@ -154,3 +257,25 @@ thead tr {
   @apply rounded-full text-xs font-medium px-2 py-0.5 text-white;
   background-image: linear-gradient(90deg, var(--brand-1), var(--brand-2));
 }
+
+/* ===== Warm gradient backgrounds ===== */
+/* Make #root transparent so body gradient shows through */
+#root { background: transparent; }
+
+/* Dark: teal-coral radial gradient over near-black */
+body {
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(94,182,168,0.06) 0%, transparent 50%),
+    radial-gradient(80% 60% at 50% 110%, rgba(244,165,140,0.05) 0%, transparent 60%),
+    #14151a;
+}
+
+/* Light: subtle teal wash over cream */
+html.ancy-light body {
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(94,182,168,0.04) 0%, transparent 50%),
+    #fafaf7;
+}
+
+/* Make the main wrapper transparent so the body gradient is visible */
+div[class*="min-h-screen"] { background: transparent !important; }

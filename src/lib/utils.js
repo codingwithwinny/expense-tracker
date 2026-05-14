@@ -73,6 +73,39 @@ export const isDateInPeriod = (date, startDate, endDate) => {
   return checkDate >= start && checkDate <= end;
 };
 
+// Maps Firestore error codes to friendly messages
+export function firestoreErrorMsg(err) {
+  const code = err?.code || '';
+  if (code === 'unavailable' || code === 'failed-precondition') {
+    return "Couldn't connect. Check your internet and try again.";
+  }
+  if (code === 'permission-denied') {
+    return "You don't have permission to do that. Try signing out and back in.";
+  }
+  if (code === 'resource-exhausted') {
+    return "Too many requests right now. Wait a moment and try again.";
+  }
+  return "Something went wrong. Try again in a moment.";
+}
+
+// Maps Firebase Functions error codes to friendly messages
+export function functionsErrorMsg(err) {
+  const code = err?.code || '';
+  if (code === 'functions/deadline-exceeded') {
+    return "That took longer than expected. Try again or use a smaller file.";
+  }
+  if (code === 'functions/resource-exhausted') {
+    return "You've hit today's AI usage limit. Try again tomorrow.";
+  }
+  if (code === 'functions/internal') {
+    return "Our AI service hit a snag. Try again.";
+  }
+  if (code === 'unavailable' || code === 'functions/unavailable') {
+    return "Couldn't connect. Check your internet and try again.";
+  }
+  return "Something went wrong. Try again in a moment.";
+}
+
 // Helper to get the current period key based on selection
 export const getCurrentPeriodKey = (selectedMonth, customDateRange) => {
   if (

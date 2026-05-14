@@ -317,6 +317,8 @@ export default function BankImportModal({
   setState,
   addToast,
   isOnline = true,
+  remainingStatements = 1,
+  onLimitReached = () => {},
 }) {
   const allCategories = categories?.length ? [...new Set([...categories, ...CATEGORIES])] : CATEGORIES;
 
@@ -372,6 +374,10 @@ export default function BankImportModal({
   async function handleFile(f) {
     if (!isOnline) {
       setError("You're offline. Connect to the internet to analyze bank statements.");
+      return;
+    }
+    if (remainingStatements <= 0) {
+      onLimitReached();
       return;
     }
 
@@ -460,6 +466,11 @@ export default function BankImportModal({
       setStep("review");
     } catch (err) {
       console.error("[Functions] parseBankStatement failed:", err);
+      if (err.code === "functions/resource-exhausted" && err.details?.limitType) {
+        setStep("upload");
+        onLimitReached();
+        return;
+      }
       let msg;
       if (err.code === "TIMEOUT") {
         msg = "That took longer than expected. Try again or use a smaller file.";
@@ -621,6 +632,10 @@ export default function BankImportModal({
                 className="space-y-4"
               >
                 <DropZone dark={dark} onFile={handleFile} loading={false} pdfJsLoading={pdfJsLoading} />
+
+                <p className="text-[11px] text-center" style={{ color: "var(--tf, #6B7280)" }}>
+                  {remainingStatements}/{3} imports today
+                </p>
 
                 {error && (
                   <div

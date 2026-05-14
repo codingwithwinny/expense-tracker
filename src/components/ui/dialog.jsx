@@ -51,18 +51,19 @@ export function DialogTrigger({ asChild = false, children }) {
   );
 }
 
-export function DialogContent({ children, className = "" }) {
+export function DialogContent({ children, className = "", style }) {
   const { open, setOpen } = useContext(Ctx);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
-        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={() => setOpen(false)}
         aria-hidden
       />
       <div
-        className={`relative z-10 w-[92%] glass p-5 shadow-2xl ${className || "max-w-lg"}`.trim()}
+        className={`relative z-10 w-[92%] rounded-2xl p-5 shadow-2xl ${className || "max-w-lg"}`.trim()}
+        style={{ background: 'var(--modal-bg)', border: '1px solid var(--modal-bdr)', color: 'var(--tx)', backdropFilter: 'blur(20px)', ...style }}
         onClick={(e) => e.stopPropagation()}
       >
         {children}
@@ -71,9 +72,9 @@ export function DialogContent({ children, className = "" }) {
   );
 }
 export function DialogHeader({ children }) { return <div className="mb-2">{children}</div>; }
-export function DialogTitle({ children }) { return <h4 className="text-lg font-semibold">{children}</h4>; }
-export function DialogDescription({ children, asChild=false }) {
-  return asChild ? <>{children}</> : <p className="text-sm text-slate-600">{children}</p>;
+export function DialogTitle({ children, style }) { return <h4 className="text-lg font-semibold" style={{ color: 'var(--tx)', ...style }}>{children}</h4>; }
+export function DialogDescription({ children, asChild=false, style }) {
+  return asChild ? <>{children}</> : <p className="text-sm" style={{ color: 'var(--tm)', ...style }}>{children}</p>;
 }
 export function DialogClose() {
   const { setOpen } = useContext(Ctx);

@@ -1,8 +1,108 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const Anthropic = require("@anthropic-ai/sdk");
+const admin = require("firebase-admin");
+
+admin.initializeApp();
+const db = admin.firestore();
 
 const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
+
+/* ─────────────────────────────────────────────
+   Usage tracking helpers
+───────────────────────────────────────────── */
+const DAILY_LIMITS = { insights: 3, parse: 10, statement: 3 };
+
+async function checkAndIncrementUsage(userId, callType, firestoreDb) {
+  const todayKey = new Date().toISOString().split("T")[0];
+  const monthKey = todayKey.substring(0, 7);
+  const dailyRef = firestoreDb
+    .collection("users")
+    .doc(userId)
+    .collection("usage")
+    .doc(todayKey);
+  const monthlyRef = firestoreDb
+    .collection("users")
+    .doc(userId)
+    .collection("usageMonthly")
+    .doc(monthKey);
+
+  const dailySnap = await dailyRef.get();
+  const data = dailySnap.exists ? dailySnap.data() : {};
+  const fieldName = callType + "Calls";
+  const currentCount = data[fieldName] || 0;
+  const limit = DAILY_LIMITS[callType];
+
+  if (currentCount >= limit) {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setUTCHours(24, 0, 0, 0);
+    const resetsInSeconds = Math.floor((tomorrow - now) / 1000);
+    return {
+      allowed: false,
+      limit,
+      used: currentCount,
+      resetsInSeconds,
+      resetsAt: tomorrow.toISOString(),
+    };
+  }
+
+  await firestoreDb.runTransaction(async (tx) => {
+    tx.set(
+      dailyRef,
+      {
+        [fieldName]: admin.firestore.FieldValue.increment(1),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    tx.set(
+      monthlyRef,
+      {
+        [fieldName]: admin.firestore.FieldValue.increment(1),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+  });
+
+  return { allowed: true, limit, used: currentCount + 1 };
+}
+
+async function recordCost(userId, costUSD, firestoreDb) {
+  const todayKey = new Date().toISOString().split("T")[0];
+  const monthKey = todayKey.substring(0, 7);
+  const dailyRef = firestoreDb
+    .collection("users")
+    .doc(userId)
+    .collection("usage")
+    .doc(todayKey);
+  const monthlyRef = firestoreDb
+    .collection("users")
+    .doc(userId)
+    .collection("usageMonthly")
+    .doc(monthKey);
+
+  await firestoreDb.runTransaction(async (tx) => {
+    tx.set(
+      dailyRef,
+      { totalCostUSD: admin.firestore.FieldValue.increment(costUSD) },
+      { merge: true },
+    );
+    tx.set(
+      monthlyRef,
+      { totalCostUSD: admin.firestore.FieldValue.increment(costUSD) },
+      { merge: true },
+    );
+  });
+}
+
+function estimateCost(usage) {
+  // Claude Sonnet 4.5 pricing — $3/M input tokens, $15/M output tokens
+  const inputCost = (usage.input_tokens / 1_000_000) * 3;
+  const outputCost = (usage.output_tokens / 1_000_000) * 15;
+  return inputCost + outputCost;
+}
 
 /* ─────────────────────────────────────────────
    1. AI Monthly Insights
@@ -15,6 +115,19 @@ exports.getSpendingInsights = onCall(
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "You must be logged in.");
+    }
+
+    const userId = request.auth.uid;
+
+    const usageCheck = await checkAndIncrementUsage(userId, "insights", db);
+    if (!usageCheck.allowed) {
+      throw new HttpsError("resource-exhausted", "Daily limit reached", {
+        limitType: "insights",
+        used: usageCheck.used,
+        limit: usageCheck.limit,
+        resetsInSeconds: usageCheck.resetsInSeconds,
+        resetsAt: usageCheck.resetsAt,
+      });
     }
 
     const {
@@ -99,6 +212,12 @@ ${summaryText}`,
       ],
     });
 
+    if (response.usage) {
+      await recordCost(userId, estimateCost(response.usage), db).catch((err) =>
+        console.error("[usage] recordCost failed:", err),
+      );
+    }
+
     const summary = {
       totalExpenses,
       remaining,
@@ -152,6 +271,19 @@ exports.parseBankStatement = onCall(
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "You must be logged in.");
+    }
+
+    const userId = request.auth.uid;
+
+    const usageCheck = await checkAndIncrementUsage(userId, "statement", db);
+    if (!usageCheck.allowed) {
+      throw new HttpsError("resource-exhausted", "Daily limit reached", {
+        limitType: "statement",
+        used: usageCheck.used,
+        limit: usageCheck.limit,
+        resetsInSeconds: usageCheck.resetsInSeconds,
+        resetsAt: usageCheck.resetsAt,
+      });
     }
 
     const { fileText, categories = [], currency = "INR" } = request.data;
@@ -225,6 +357,12 @@ ${fileText}`,
       throw new HttpsError("internal", `AI request failed: ${apiErr.message || "Unknown error"}`);
     }
 
+    if (response.usage) {
+      await recordCost(userId, estimateCost(response.usage), db).catch((err) =>
+        console.error("[usage] recordCost failed:", err),
+      );
+    }
+
     try {
       const raw = response.content[0].text.trim().replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(raw);
@@ -262,6 +400,19 @@ exports.parseExpense = onCall(
       throw new HttpsError("unauthenticated", "You must be logged in.");
     }
 
+    const userId = request.auth.uid;
+
+    const usageCheck = await checkAndIncrementUsage(userId, "parse", db);
+    if (!usageCheck.allowed) {
+      throw new HttpsError("resource-exhausted", "Daily limit reached", {
+        limitType: "parse",
+        used: usageCheck.used,
+        limit: usageCheck.limit,
+        resetsInSeconds: usageCheck.resetsInSeconds,
+        resetsAt: usageCheck.resetsAt,
+      });
+    }
+
     const { text, categories = [], currency = "INR" } = request.data;
 
     if (!text?.trim()) {
@@ -278,7 +429,6 @@ exports.parseExpense = onCall(
     const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
     const today = new Date().toISOString().slice(0, 10);
 
-    // Calculate yesterday's date
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().slice(0, 10);
@@ -325,18 +475,20 @@ Example output for "spent 400 on coffee and 1000 on groceries":
       ],
     });
 
+    if (response.usage) {
+      await recordCost(userId, estimateCost(response.usage), db).catch((err) =>
+        console.error("[usage] recordCost failed:", err),
+      );
+    }
+
     try {
       const rawText = response.content[0].text.trim();
       const cleaned = rawText.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(cleaned);
 
-      // Ensure it's an array
       const expenses = Array.isArray(parsed) ? parsed : [parsed];
-
-      // Enforce max 5 limit
       const limited = expenses.slice(0, 5);
 
-      // Validate each expense
       const validated = limited
         .filter(
           (e) => e.amount && !isNaN(Number(e.amount)) && Number(e.amount) > 0,

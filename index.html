@@ -25,6 +25,15 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="msapplication-TileColor" content="#3B82F6" />
     <meta name="msapplication-config" content="/browserconfig.xml" />
+    <script>
+      (function(){
+        try{
+          var t=localStorage.getItem('ancy-theme');
+          if(t==='dark'){document.documentElement.classList.add('ancy-dark','dark');}
+          else{document.documentElement.classList.add('ancy-light');}
+        }catch(e){}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
