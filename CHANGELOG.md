@@ -152,3 +152,13 @@ _Work in progress for next release._
 
 - Firestore rules: `/usage` and `/usageMonthly` are read-only for the user (writes only by Cloud Functions via Admin SDK)
 - `/waitlist` allows create by authenticated user matching `userId`, no read/update/delete
+
+## [2.6.0] — 2026-05-14
+
+### Added — Blocker #3: Empty states (ADR-005)
+
+- Reusable `EmptyState` component with icon, heading, subtext, primary CTA, and optional secondary link
+- Dashboard, Expenses list, Budgets, AI Insights, and custom-date-range empty states
+- Distinguishes brand-new-user empty state from filtered-empty state (different copy, different CTAs)
+- Budgets framed as optional ("Ancy works without them") — quiet trust signal
+- No multi-step onboarding flow — first Add Expense IS the onboarding moment

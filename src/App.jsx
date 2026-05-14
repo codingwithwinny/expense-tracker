@@ -34,6 +34,13 @@ import {
 } from "@/lib/firebase";
 import BankImportModal from "@/components/BankImportModal";
 import EmptyState from "@/components/EmptyState";
+import {
+  buildExpensesCsv,
+  buildFullJsonExport,
+  downloadFile,
+  todayStamp,
+  readAllPeriodsFromStorage,
+} from "@/lib/exportData";
 
 import AuthButtons from "@/components/AuthButtons";
 import AuthPage from "@/components/AuthPage";
@@ -86,6 +93,8 @@ import {
   Bell,
   SlidersHorizontal,
   Calendar,
+  FileJson,
+  FileSpreadsheet,
 } from "lucide-react";
 import {
   PieChart,
@@ -2711,6 +2720,16 @@ export default function ExpenseTracker() {
   const [newCat, setNewCat] = useState("");
   const [catError, setCatError] = useState("");
 
+  // Count all expenses across all stored periods (for export section)
+  const totalExpenseCount = useMemo(() => {
+    if (!user?.uid) return 0;
+    const allData = readAllPeriodsFromStorage(user.uid);
+    return Object.values(allData).reduce(
+      (sum, d) => sum + (d?.expenses?.length || 0),
+      0,
+    );
+  }, [user?.uid]);
+
   if (loading) {
     return (
       <div
@@ -3509,6 +3528,47 @@ export default function ExpenseTracker() {
     const bud = Number(catBudgets[c]) || 0;
     return bud > 0 && spent > bud;
   });
+
+  function handleExportCsv() {
+    try {
+      const allData = readAllPeriodsFromStorage(user.uid);
+      const csv = buildExpensesCsv(allData);
+      downloadFile(
+        csv,
+        `ancy-expenses-${todayStamp()}.csv`,
+        "text/csv;charset=utf-8",
+      );
+      addToast("CSV downloaded", "success");
+    } catch (err) {
+      console.error("[Export] CSV failed:", err);
+      addToast("Couldn't export. Try again.", "error");
+    }
+  }
+
+  function handleExportJson() {
+    try {
+      const allData = readAllPeriodsFromStorage(user.uid);
+      const json = buildFullJsonExport({
+        allMonthsData: allData,
+        catBudgets,
+        incomeSources,
+        savingsGoals,
+        categories,
+        user,
+        currency: selectedCurrency.code,
+      });
+      downloadFile(
+        JSON.stringify(json, null, 2),
+        `ancy-export-${todayStamp()}.json`,
+        "application/json",
+      );
+      addToast("Backup downloaded", "success");
+    } catch (err) {
+      console.error("[Export] JSON failed:", err);
+      addToast("Couldn't export. Try again.", "error");
+    }
+  }
+
   return (
     <ThemeContext.Provider value={{ dark, toggle: toggleTheme }}>
       {!isOnline && (
@@ -6868,6 +6928,7 @@ export default function ExpenseTracker() {
                     icon: SlidersHorizontal,
                   },
                   { id: "notifications", label: "Notifications", icon: Bell },
+                  { id: "data", label: "Your data", icon: Download },
                   { id: "danger", label: "Danger Zone", icon: AlertTriangle },
                   ...(import.meta.env.DEV
                     ? [{ id: "usage", label: "Usage (dev)", icon: Zap }]
@@ -7436,6 +7497,123 @@ export default function ExpenseTracker() {
                                   delivered to your device.
                                 </p>
                               </div>
+                            </GlassCard>
+                          )}
+
+                          {/* ── YOUR DATA ── */}
+                          {activeSettingsSection === "data" && (
+                            <GlassCard className="p-6">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Download
+                                  className="h-4 w-4"
+                                  style={{ color: "#818CF8" }}
+                                />
+                                <h2
+                                  className="text-xl font-semibold"
+                                  style={{ color: "var(--tx)" }}
+                                >
+                                  Your data
+                                </h2>
+                              </div>
+                              <p
+                                className="text-sm mb-6"
+                                style={{ color: "var(--tf)" }}
+                              >
+                                Download everything you've logged in Ancy. Yours to keep.
+                              </p>
+
+                              {totalExpenseCount === 0 ? (
+                                <p
+                                  className="text-sm italic"
+                                  style={{ color: "var(--tf)" }}
+                                >
+                                  Add some expenses first — there's nothing to export yet.
+                                </p>
+                              ) : (
+                                <div className="flex flex-col gap-3">
+                                  <button
+                                    onClick={handleExportCsv}
+                                    className="flex items-center justify-between rounded-2xl px-4 py-3.5 transition-colors"
+                                    style={{
+                                      background: "var(--c4)",
+                                      border: "1px solid var(--bd)",
+                                    }}
+                                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--c5)")}
+                                    onMouseLeave={(e) => (e.currentTarget.style.background = "var(--c4)")}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div
+                                        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                                        style={{ background: "rgba(52,211,153,0.12)" }}
+                                      >
+                                        <FileSpreadsheet
+                                          className="h-4.5 w-4.5"
+                                          style={{ color: "#34D399" }}
+                                        />
+                                      </div>
+                                      <div className="text-left">
+                                        <p
+                                          className="text-sm font-medium"
+                                          style={{ color: "var(--tx)" }}
+                                        >
+                                          Export as CSV
+                                        </p>
+                                        <p
+                                          className="text-xs"
+                                          style={{ color: "var(--tf)" }}
+                                        >
+                                          Opens in Excel, Sheets, Numbers. {totalExpenseCount} expense{totalExpenseCount === 1 ? "" : "s"}.
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <Download
+                                      className="h-4 w-4 shrink-0"
+                                      style={{ color: "var(--tf)" }}
+                                    />
+                                  </button>
+
+                                  <button
+                                    onClick={handleExportJson}
+                                    className="flex items-center justify-between rounded-2xl px-4 py-3.5 transition-colors"
+                                    style={{
+                                      background: "var(--c4)",
+                                      border: "1px solid var(--bd)",
+                                    }}
+                                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--c5)")}
+                                    onMouseLeave={(e) => (e.currentTarget.style.background = "var(--c4)")}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div
+                                        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                                        style={{ background: "rgba(129,140,248,0.12)" }}
+                                      >
+                                        <FileJson
+                                          className="h-4.5 w-4.5"
+                                          style={{ color: "#818CF8" }}
+                                        />
+                                      </div>
+                                      <div className="text-left">
+                                        <p
+                                          className="text-sm font-medium"
+                                          style={{ color: "var(--tx)" }}
+                                        >
+                                          Export as JSON
+                                        </p>
+                                        <p
+                                          className="text-xs"
+                                          style={{ color: "var(--tf)" }}
+                                        >
+                                          Full backup including budgets, income, and savings goals.
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <Download
+                                      className="h-4 w-4 shrink-0"
+                                      style={{ color: "var(--tf)" }}
+                                    />
+                                  </button>
+                                </div>
+                              )}
                             </GlassCard>
                           )}
 
