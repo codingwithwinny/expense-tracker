@@ -22,6 +22,9 @@ import {
   getDoc,
   setDoc,
   serverTimestamp,
+  collection,
+  getDocs,
+  deleteDoc,
 } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { DEFAULT_CATEGORIES } from "@/lib/constants";
@@ -221,39 +224,71 @@ export async function saveUserDoc(uid, data) {
 }
 
 export async function loadMonth(uid, monthKey) {
-  const ref = doc(db, "users", uid, "months", monthKey);
-  const snap = await getDoc(ref);
+  try {
+    const ref = doc(db, "users", uid, "months", monthKey);
+    const snap = await getDoc(ref);
 
-  const base = {
-    incomeSources: [],
-    expenses: [],
-    catBudgets: {},
-    categories: DEFAULT_CATEGORIES,
-  };
+    const base = {
+      incomeSources: [],
+      expenses: [],
+      catBudgets: {},
+      categories: DEFAULT_CATEGORIES,
+    };
 
-  if (!snap.exists()) {
-    await setDoc(ref, base, { merge: true });
-    return base;
-  }
+    if (!snap.exists()) {
+      await setDoc(ref, base, { merge: true });
+      return base;
+    }
 
-  const data = snap.data() || {};
-  if (!Array.isArray(data.categories) || data.categories.length === 0) {
-    data.categories = DEFAULT_CATEGORIES;
-    await setDoc(ref, { categories: data.categories }, { merge: true });
+    const data = snap.data() || {};
+    if (!Array.isArray(data.categories) || data.categories.length === 0) {
+      data.categories = DEFAULT_CATEGORIES;
+      await setDoc(ref, { categories: data.categories }, { merge: true });
+    }
+    if (!Array.isArray(data.incomeSources)) data.incomeSources = [];
+    if (!Array.isArray(data.expenses)) data.expenses = [];
+    if (typeof data.catBudgets !== "object" || data.catBudgets === null) {
+      data.catBudgets = {};
+    }
+    return data;
+  } catch (err) {
+    console.error("[Firestore] loadMonth failed:", { monthKey, err });
+    throw err;
   }
-  if (!Array.isArray(data.incomeSources)) data.incomeSources = [];
-  if (!Array.isArray(data.expenses)) data.expenses = [];
-  if (typeof data.catBudgets !== "object" || data.catBudgets === null) {
-    data.catBudgets = {};
-  }
-  return data;
 }
 
 export async function saveMonth(uid, monthKey, payload) {
-  const ref = doc(db, "users", uid, "months", monthKey);
-  await setDoc(
-    ref,
-    { ...payload, updatedAt: serverTimestamp() },
-    { merge: true },
-  );
+  try {
+    const ref = doc(db, "users", uid, "months", monthKey);
+    await setDoc(
+      ref,
+      { ...payload, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+  } catch (err) {
+    console.error("[Firestore] saveMonth failed:", { monthKey, err });
+    throw err;
+  }
+}
+
+export async function wipeUserData(uid) {
+  try {
+    const monthsRef = collection(db, "users", uid, "months");
+    const snap = await getDocs(monthsRef);
+    await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+    const userRef = doc(db, "users", uid);
+    await setDoc(
+      userRef,
+      {
+        incomeSources: [],
+        savingsGoals: [],
+        catBudgets: {},
+        categories: DEFAULT_CATEGORIES,
+      },
+      { merge: true },
+    );
+  } catch (err) {
+    console.error("[Firestore] wipeUserData failed:", err);
+    throw err;
+  }
 }

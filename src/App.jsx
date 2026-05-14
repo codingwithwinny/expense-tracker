@@ -1,21 +1,36 @@
 // src/App.jsx
-import React, { useMemo, useState, useEffect, useCallback } from "react";
+import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import useAuth from "@/hooks/useAuth";
 import useMonthData from "@/hooks/useMonthData";
 import useDateSelection from "@/hooks/useDateSelection";
 import { useCurrency } from "@/hooks/useCurrency.jsx";
-import { fmt, buildCSV, periodKey } from "@/lib/utils";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import {
+  fmt,
+  buildCSV,
+  periodKey,
+  functionsErrorMsg,
+  firestoreErrorMsg,
+} from "@/lib/utils";
 import {
   DEFAULT_CATEGORIES,
   MAX_CATEGORIES,
   MAX_CATEGORY_NAME_LEN,
   COLORS,
 } from "@/lib/constants";
-import { getSpendingInsightsFn, parseExpenseFn, loadUserDoc, saveUserDoc, loadMonth, saveMonth } from "@/lib/firebase";
+import {
+  getSpendingInsightsFn,
+  parseExpenseFn,
+  loadUserDoc,
+  saveUserDoc,
+  loadMonth,
+  saveMonth,
+  signOutUser,
+  wipeUserData,
+} from "@/lib/firebase";
 import BankImportModal from "@/components/BankImportModal";
-import InsightsModal from "@/components/InsightsModal";
 
 import AuthButtons from "@/components/AuthButtons";
 import AuthPage from "@/components/AuthPage";
@@ -44,8 +59,10 @@ import {
   Target,
   X,
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   TrendingUp,
+  TrendingDown,
   PiggyBank,
   HelpCircle,
   Sun,
@@ -56,8 +73,31 @@ import {
   Pencil,
   ChevronDown,
   Upload,
+  CloudUpload,
+  LayoutDashboard,
+  Receipt,
+  PieChart as PieChartIcon,
+  MoreHorizontal,
+  Settings,
+  User,
+  Bell,
+  SlidersHorizontal,
 } from "lucide-react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Legend,
+  BarChart,
+  Bar,
+} from "recharts";
 
 function colorFor(name) {
   let h = 0;
@@ -133,13 +173,35 @@ function ToastContainer({ toasts }) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 60 }}
             transition={{ duration: 0.22 }}
-            className={`pointer-events-auto flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm shadow-xl backdrop-blur-sm
-              ${t.type === "error" ? "bg-red-50/90 border-red-200 text-red-800" : "bg-green-50/90 border-green-200 text-green-800"}`}
+            className="pointer-events-auto flex items-center gap-2 rounded-2xl px-4 py-3 text-sm shadow-xl"
+            style={{
+              background:
+                t.type === "error"
+                  ? "linear-gradient(180deg, rgba(251,113,133,0.14) 0%, rgba(251,113,133,0.06) 100%)"
+                  : t.type === "info"
+                  ? "linear-gradient(180deg, rgba(251,191,36,0.14) 0%, rgba(251,191,36,0.06) 100%)"
+                  : "linear-gradient(180deg, rgba(52,211,153,0.14) 0%, rgba(52,211,153,0.06) 100%)",
+              border: `1px solid ${t.type === "error" ? "rgba(251,113,133,0.3)" : t.type === "info" ? "rgba(251,191,36,0.3)" : "rgba(52,211,153,0.3)"}`,
+              backdropFilter: "blur(16px)",
+              WebkitBackdropFilter: "blur(16px)",
+              color: "var(--tx)",
+            }}
           >
             {t.type === "error" ? (
-              <AlertCircle className="h-4 w-4 shrink-0" />
+              <AlertCircle
+                className="h-4 w-4 shrink-0"
+                style={{ color: "#FB7185" }}
+              />
+            ) : t.type === "info" ? (
+              <CloudUpload
+                className="h-4 w-4 shrink-0"
+                style={{ color: "#FBBF24" }}
+              />
             ) : (
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <CheckCircle2
+                className="h-4 w-4 shrink-0"
+                style={{ color: "#34D399" }}
+              />
             )}
             {t.message}
           </motion.div>
@@ -149,24 +211,28 @@ function ToastContainer({ toasts }) {
   );
 }
 
-function GlassCard({ children, className = "" }) {
-  const { dark } = useTheme();
+function GlassCard({ children, className = "", style }) {
   return (
     <div
-      className={`rounded-2xl shadow-lg border ${dark ? "bg-[#1e2235]/80 border-white/5 backdrop-blur-sm" : "bg-white/70 border-white/60 backdrop-blur-sm"} ${className}`}
+      className={`rounded-2xl bg-white dark:bg-white/[0.035] border border-slate-200 dark:border-white/10 shadow-sm dark:shadow-none ${className}`}
+      style={{
+        backdropFilter: "blur(20px) saturate(140%)",
+        WebkitBackdropFilter: "blur(20px) saturate(140%)",
+        ...style,
+      }}
     >
       {children}
     </div>
   );
 }
 
-function SectionTitle({ icon: Icon, children, iconColor = "text-indigo-500" }) {
-  const { dark } = useTheme();
+function SectionTitle({ icon: Icon, children, iconColor = "text-[#818CF8]" }) {
   return (
     <div className="flex items-center gap-2 mb-4">
       <Icon className={`h-4 w-4 ${iconColor}`} />
       <h2
-        className={`font-semibold text-sm ${dark ? "text-gray-200" : "text-gray-700"}`}
+        className="font-medium text-[11px] tracking-[0.08em] uppercase"
+        style={{ color: "var(--tm)" }}
       >
         {children}
       </h2>
@@ -174,7 +240,17 @@ function SectionTitle({ icon: Icon, children, iconColor = "text-indigo-500" }) {
   );
 }
 
-function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip, selectedCurrency, setSelectedCurrency }) {
+function OnboardingFlow({
+  dark,
+  data,
+  setData,
+  step,
+  setStep,
+  onComplete,
+  onSkip,
+  selectedCurrency,
+  setSelectedCurrency,
+}) {
   const totalSteps = 6;
   const CURRENCY_OPTIONS = [
     { code: "INR", flag: "🇮🇳", symbol: "₹" },
@@ -206,7 +282,10 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
   const toggleCategory = (name) => {
     const current = data.selectedCategories || [];
     if (current.includes(name)) {
-      setData({ ...data, selectedCategories: current.filter((c) => c !== name) });
+      setData({
+        ...data,
+        selectedCategories: current.filter((c) => c !== name),
+      });
     } else {
       setData({ ...data, selectedCategories: [...current, name] });
     }
@@ -215,21 +294,30 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
   const canProceedStep3 = data.incomeAmount && Number(data.incomeAmount) > 0;
   const canProceedStep4 = (data.selectedCategories || []).length > 0;
 
-  const bg = dark ? "bg-[#12141f]" : "bg-gradient-to-br from-slate-50 to-indigo-50";
-  const textMain = dark ? "text-white" : "text-gray-900";
-  const textMuted = dark ? "text-gray-400" : "text-gray-600";
-  const inputBg = dark ? "bg-[#252a3d] border-white/10 text-white" : "bg-white border-gray-200 text-gray-900";
+  const textMain = "";
+  const textMuted = "";
+  const inputBg = "";
 
   return (
-    <div className={`fixed inset-0 z-50 ${bg} flex flex-col overflow-y-auto`}>
+    <div
+      className="fixed inset-0 z-50 flex flex-col overflow-y-auto"
+      style={{ background: "var(--page-bg)", color: "var(--tx)" }}
+    >
       {/* Progress dots */}
       <div className="flex justify-center items-center gap-2 pt-8 pb-4">
         {Array.from({ length: totalSteps }).map((_, i) => (
           <div
             key={i}
-            className={`h-1.5 rounded-full transition-all duration-300 ${
-              i + 1 === step ? "w-8 bg-indigo-500" : i + 1 < step ? "w-4 bg-indigo-500/60" : "w-4 bg-gray-400/30"
-            }`}
+            className="h-1.5 rounded-full transition-all duration-300"
+            style={{
+              width: i + 1 === step ? 32 : 16,
+              background:
+                i + 1 === step
+                  ? "#818CF8"
+                  : i + 1 < step
+                    ? "rgba(129,140,248,0.5)"
+                    : "var(--c10)",
+            }}
           />
         ))}
       </div>
@@ -248,14 +336,22 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
             {step === 1 && (
               <div className="text-center space-y-6">
                 <div className="text-6xl mb-4">👋</div>
-                <h1 className={`text-3xl font-bold ${textMain}`}>Welcome to Ancy</h1>
+                <h1 className={`text-3xl font-bold ${textMain}`}>
+                  Welcome to Ancy
+                </h1>
                 <p className={`text-base ${textMuted}`}>
                   Let's set up your money dashboard in 60 seconds.
                 </p>
                 <div className="pt-4 space-y-3">
                   <button
                     onClick={next}
-                    className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white font-semibold hover:opacity-90 active:scale-[0.98] transition-all"
+                    className="w-full py-3 rounded-full font-semibold hover:opacity-90 active:scale-[0.98] transition-all"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, #818CF8 0%, #22D3EE 100%)",
+                      color: "#07090F",
+                      boxShadow: "0 10px 30px -10px rgba(34,211,238,0.55)",
+                    }}
                   >
                     Get Started
                   </button>
@@ -273,22 +369,37 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
               <div className="space-y-6">
                 <div className="text-center">
                   <div className="text-5xl mb-3">🌐</div>
-                  <h2 className={`text-2xl font-bold ${textMain}`}>What currency do you use?</h2>
+                  <h2 className={`text-2xl font-bold ${textMain}`}>
+                    What currency do you use?
+                  </h2>
                   <p className={`text-sm mt-2 ${textMuted}`}>
-                    We detected this based on your location — change it if needed.
+                    We detected this based on your location — change it if
+                    needed.
                   </p>
                 </div>
                 <div className="flex flex-col items-center gap-4">
-                  <div className={`px-8 py-5 rounded-2xl ${dark ? "bg-white/5 border border-white/10" : "bg-white border border-gray-100 shadow-sm"} text-center`}>
+                  <div
+                    className="px-8 py-5 rounded-2xl text-center"
+                    style={{
+                      background: "var(--c5)",
+                      border: "1px solid var(--bd)",
+                    }}
+                  >
                     <div className="text-5xl mb-2">{selectedCurrency.flag}</div>
-                    <div className={`text-2xl font-bold ${textMain}`}>{selectedCurrency.code}</div>
-                    <div className={`text-lg ${textMuted}`}>{selectedCurrency.symbol}</div>
+                    <div className={`text-2xl font-bold ${textMain}`}>
+                      {selectedCurrency.code}
+                    </div>
+                    <div className={`text-lg ${textMuted}`}>
+                      {selectedCurrency.symbol}
+                    </div>
                   </div>
                   <button
                     onClick={() => setShowCurrencyGrid((v) => !v)}
                     className={`text-sm font-medium text-indigo-500 hover:text-indigo-400 underline underline-offset-2`}
                   >
-                    {showCurrencyGrid ? "Hide options" : "Use a different currency"}
+                    {showCurrencyGrid
+                      ? "Hide options"
+                      : "Use a different currency"}
                   </button>
                   {showCurrencyGrid && (
                     <div className="grid grid-cols-3 gap-2 w-full">
@@ -298,17 +409,25 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
                           <button
                             key={c.code}
                             onClick={() => setSelectedCurrency(c.code)}
-                            className={`py-3 px-2 rounded-xl border-2 transition-all active:scale-95 text-center ${
-                              isSelected
-                                ? "border-indigo-500 bg-indigo-500/10"
-                                : dark
-                                ? "border-white/10 hover:border-white/20"
-                                : "border-gray-200 hover:border-gray-300"
-                            }`}
+                            className="py-3 px-2 rounded-xl border-2 transition-all active:scale-95 text-center"
+                            style={{
+                              borderColor: isSelected
+                                ? "#818CF8"
+                                : "var(--c10)",
+                              background: isSelected
+                                ? "rgba(129,140,248,0.1)"
+                                : "transparent",
+                            }}
                           >
                             <div className="text-2xl mb-1">{c.flag}</div>
-                            <div className={`text-xs font-semibold ${textMain}`}>{c.code}</div>
-                            <div className={`text-xs ${textMuted}`}>{c.symbol}</div>
+                            <div
+                              className={`text-xs font-semibold ${textMain}`}
+                            >
+                              {c.code}
+                            </div>
+                            <div className={`text-xs ${textMuted}`}>
+                              {c.symbol}
+                            </div>
                           </button>
                         );
                       })}
@@ -318,13 +437,24 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
                 <div className="flex gap-2">
                   <button
                     onClick={back}
-                    className={`flex-1 py-3 rounded-xl border ${dark ? "border-white/10 text-white hover:bg-white/5" : "border-gray-200 text-gray-700 hover:bg-gray-50"} font-medium transition`}
+                    className="flex-1 py-3 rounded-full font-medium transition"
+                    style={{
+                      border: "1px solid var(--c10)",
+                      color: "var(--tx)",
+                      background: "var(--c2)",
+                    }}
                   >
                     Back
                   </button>
                   <button
                     onClick={next}
-                    className="flex-[2] py-3 rounded-xl font-semibold bg-gradient-to-r from-indigo-500 to-cyan-500 text-white hover:opacity-90 active:scale-[0.98] transition"
+                    className="flex-[2] py-3 rounded-full font-semibold hover:opacity-90 active:scale-[0.98] transition"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, #818CF8 0%, #22D3EE 100%)",
+                      color: "#07090F",
+                      boxShadow: "0 10px 30px -10px rgba(34,211,238,0.55)",
+                    }}
                   >
                     Next
                   </button>
@@ -342,50 +472,75 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
               <div className="space-y-6">
                 <div className="text-center">
                   <div className="text-5xl mb-3">💰</div>
-                  <h2 className={`text-2xl font-bold ${textMain}`}>What's your monthly income?</h2>
+                  <h2 className={`text-2xl font-bold ${textMain}`}>
+                    What's your monthly income?
+                  </h2>
                   <p className={`text-sm mt-2 ${textMuted}`}>
                     We'll use this to track your spending vs earning.
                   </p>
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <label className={`text-xs font-medium ${textMuted} mb-1 block`}>Source name</label>
+                    <label
+                      className={`text-xs font-medium ${textMuted} mb-1 block`}
+                    >
+                      Source name
+                    </label>
                     <input
                       type="text"
                       value={data.incomeName}
-                      onChange={(e) => setData({ ...data, incomeName: e.target.value })}
+                      onChange={(e) =>
+                        setData({ ...data, incomeName: e.target.value })
+                      }
                       placeholder="Salary"
-                      className={`w-full px-4 py-3 rounded-xl border ${inputBg} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                      className={`w-full px-4 py-3 rounded-xl border ${inputBg}`}
+                      style={{ background: "var(--c3)", outline: "none" }}
                     />
                   </div>
                   <div>
-                    <label className={`text-xs font-medium ${textMuted} mb-1 block`}>
+                    <label
+                      className={`text-xs font-medium ${textMuted} mb-1 block`}
+                    >
                       Amount ({selectedCurrency.code})
                     </label>
                     <input
                       type="number"
                       value={data.incomeAmount}
-                      onChange={(e) => setData({ ...data, incomeAmount: e.target.value })}
+                      onChange={(e) =>
+                        setData({ ...data, incomeAmount: e.target.value })
+                      }
                       placeholder="50000"
-                      className={`w-full px-4 py-3 rounded-xl border ${inputBg} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                      className={`w-full px-4 py-3 rounded-xl border ${inputBg}`}
+                      style={{ background: "var(--c3)", outline: "none" }}
                     />
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={back}
-                    className={`flex-1 py-3 rounded-xl border ${dark ? "border-white/10 text-white hover:bg-white/5" : "border-gray-200 text-gray-700 hover:bg-gray-50"} font-medium transition`}
+                    className="flex-1 py-3 rounded-full font-medium transition"
+                    style={{
+                      border: "1px solid var(--c10)",
+                      color: "var(--tx)",
+                      background: "var(--c2)",
+                    }}
                   >
                     Back
                   </button>
                   <button
                     onClick={next}
                     disabled={!canProceedStep3}
-                    className={`flex-[2] py-3 rounded-xl font-semibold transition ${
-                      canProceedStep3
-                        ? "bg-gradient-to-r from-indigo-500 to-cyan-500 text-white hover:opacity-90 active:scale-[0.98]"
-                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    }`}
+                    className="flex-[2] py-3 rounded-full font-semibold transition"
+                    style={{
+                      background: canProceedStep3
+                        ? "linear-gradient(135deg, #818CF8 0%, #22D3EE 100%)"
+                        : "var(--bd)",
+                      color: canProceedStep3 ? "#07090F" : "var(--tf)",
+                      cursor: canProceedStep3 ? "pointer" : "not-allowed",
+                      boxShadow: canProceedStep3
+                        ? "0 10px 30px -10px rgba(34,211,238,0.55)"
+                        : "none",
+                    }}
                   >
                     Next
                   </button>
@@ -403,28 +558,34 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
               <div className="space-y-6">
                 <div className="text-center">
                   <div className="text-5xl mb-3">🎯</div>
-                  <h2 className={`text-2xl font-bold ${textMain}`}>What do you spend on?</h2>
+                  <h2 className={`text-2xl font-bold ${textMain}`}>
+                    What do you spend on?
+                  </h2>
                   <p className={`text-sm mt-2 ${textMuted}`}>
                     Tap the ones that apply. You can change these anytime.
                   </p>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   {COMMON_CATEGORIES.map((cat) => {
-                    const isSelected = (data.selectedCategories || []).includes(cat.name);
+                    const isSelected = (data.selectedCategories || []).includes(
+                      cat.name,
+                    );
                     return (
                       <button
                         key={cat.name}
                         onClick={() => toggleCategory(cat.name)}
-                        className={`py-3 px-2 rounded-xl border-2 transition-all active:scale-95 ${
-                          isSelected
-                            ? "border-indigo-500 bg-indigo-500/10"
-                            : dark
-                            ? "border-white/10 hover:border-white/20"
-                            : "border-gray-200 hover:border-gray-300"
-                        }`}
+                        className="py-3 px-2 rounded-xl border-2 transition-all active:scale-95"
+                        style={{
+                          borderColor: isSelected ? "#818CF8" : "var(--c10)",
+                          background: isSelected
+                            ? "rgba(129,140,248,0.12)"
+                            : "var(--c2)",
+                        }}
                       >
                         <div className="text-2xl mb-1">{cat.emoji}</div>
-                        <div className={`text-xs font-medium ${textMain}`}>{cat.name}</div>
+                        <div className={`text-xs font-medium ${textMain}`}>
+                          {cat.name}
+                        </div>
                       </button>
                     );
                   })}
@@ -432,18 +593,29 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
                 <div className="flex gap-2">
                   <button
                     onClick={back}
-                    className={`flex-1 py-3 rounded-xl border ${dark ? "border-white/10 text-white hover:bg-white/5" : "border-gray-200 text-gray-700 hover:bg-gray-50"} font-medium transition`}
+                    className="flex-1 py-3 rounded-full font-medium transition"
+                    style={{
+                      border: "1px solid var(--c10)",
+                      color: "var(--tx)",
+                      background: "var(--c2)",
+                    }}
                   >
                     Back
                   </button>
                   <button
                     onClick={next}
                     disabled={!canProceedStep4}
-                    className={`flex-[2] py-3 rounded-xl font-semibold transition ${
-                      canProceedStep4
-                        ? "bg-gradient-to-r from-indigo-500 to-cyan-500 text-white hover:opacity-90 active:scale-[0.98]"
-                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    }`}
+                    className="flex-[2] py-3 rounded-full font-semibold transition"
+                    style={{
+                      background: canProceedStep4
+                        ? "linear-gradient(135deg, #818CF8 0%, #22D3EE 100%)"
+                        : "var(--bd)",
+                      color: canProceedStep4 ? "#07090F" : "var(--tf)",
+                      cursor: canProceedStep4 ? "pointer" : "not-allowed",
+                      boxShadow: canProceedStep4
+                        ? "0 10px 30px -10px rgba(34,211,238,0.55)"
+                        : "none",
+                    }}
                   >
                     Next
                   </button>
@@ -455,45 +627,70 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
               <div className="space-y-6">
                 <div className="text-center">
                   <div className="text-5xl mb-3">🏆</div>
-                  <h2 className={`text-2xl font-bold ${textMain}`}>Any savings goals?</h2>
+                  <h2 className={`text-2xl font-bold ${textMain}`}>
+                    Any savings goals?
+                  </h2>
                   <p className={`text-sm mt-2 ${textMuted}`}>
                     Totally optional — you can add these later.
                   </p>
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <label className={`text-xs font-medium ${textMuted} mb-1 block`}>Goal name</label>
+                    <label
+                      className={`text-xs font-medium ${textMuted} mb-1 block`}
+                    >
+                      Goal name
+                    </label>
                     <input
                       type="text"
                       value={data.savingsGoalName}
-                      onChange={(e) => setData({ ...data, savingsGoalName: e.target.value })}
+                      onChange={(e) =>
+                        setData({ ...data, savingsGoalName: e.target.value })
+                      }
                       placeholder="Emergency fund"
-                      className={`w-full px-4 py-3 rounded-xl border ${inputBg} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                      className={`w-full px-4 py-3 rounded-xl border ${inputBg}`}
+                      style={{ background: "var(--c3)", outline: "none" }}
                     />
                   </div>
                   <div>
-                    <label className={`text-xs font-medium ${textMuted} mb-1 block`}>
+                    <label
+                      className={`text-xs font-medium ${textMuted} mb-1 block`}
+                    >
                       Target amount ({selectedCurrency.code})
                     </label>
                     <input
                       type="number"
                       value={data.savingsGoalTarget}
-                      onChange={(e) => setData({ ...data, savingsGoalTarget: e.target.value })}
+                      onChange={(e) =>
+                        setData({ ...data, savingsGoalTarget: e.target.value })
+                      }
                       placeholder="100000"
-                      className={`w-full px-4 py-3 rounded-xl border ${inputBg} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                      className={`w-full px-4 py-3 rounded-xl border ${inputBg}`}
+                      style={{ background: "var(--c3)", outline: "none" }}
                     />
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={back}
-                    className={`flex-1 py-3 rounded-xl border ${dark ? "border-white/10 text-white hover:bg-white/5" : "border-gray-200 text-gray-700 hover:bg-gray-50"} font-medium transition`}
+                    className="flex-1 py-3 rounded-full font-medium transition"
+                    style={{
+                      border: "1px solid var(--c10)",
+                      color: "var(--tx)",
+                      background: "var(--c2)",
+                    }}
                   >
                     Back
                   </button>
                   <button
                     onClick={next}
-                    className="flex-[2] py-3 rounded-xl font-semibold bg-gradient-to-r from-indigo-500 to-cyan-500 text-white hover:opacity-90 active:scale-[0.98] transition"
+                    className="flex-[2] py-3 rounded-full font-semibold hover:opacity-90 active:scale-[0.98] transition"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, #818CF8 0%, #22D3EE 100%)",
+                      color: "#07090F",
+                      boxShadow: "0 10px 30px -10px rgba(34,211,238,0.55)",
+                    }}
                   >
                     Finish
                   </button>
@@ -517,7 +714,9 @@ function OnboardingFlow({ dark, data, setData, step, setStep, onComplete, onSkip
                 >
                   🎉
                 </motion.div>
-                <h2 className={`text-3xl font-bold ${textMain}`}>You're all set!</h2>
+                <h2 className={`text-3xl font-bold ${textMain}`}>
+                  You're all set!
+                </h2>
                 <p className={`text-base ${textMuted}`}>
                   Let's start tracking your finances.
                 </p>
@@ -589,16 +788,17 @@ function AITooltip({ dark, onDismiss }) {
 }
 
 function ThemedInput({ className = "", error = false, ...props }) {
-  const { dark } = useTheme();
   return (
     <input
       {...props}
-      className={`w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all
-        ${
-          dark
-            ? `bg-[#252a3d] border ${error ? "border-red-500/50" : "border-white/10"} text-gray-200 placeholder-gray-500`
-            : `bg-white/60 border ${error ? "border-red-300" : "border-gray-200"} text-gray-800 placeholder-gray-400`
-        } ${className}`}
+      className={`w-full px-3 py-2.5 rounded-xl text-sm transition-all ${className}`}
+      style={{
+        background: "var(--c3)",
+        border: `1px solid ${error ? "rgba(251,113,133,0.5)" : "var(--bd)"}`,
+        color: "var(--tx)",
+        fontFamily: "inherit",
+        outline: "none",
+      }}
     />
   );
 }
@@ -610,19 +810,28 @@ function GradBtn({
   disabled = false,
   variant = "primary",
 }) {
-  const base =
-    variant === "primary"
-      ? "bg-gradient-to-r from-indigo-500 to-cyan-500 text-white shadow-md hover:shadow-indigo-500/30 hover:opacity-90"
-      : variant === "secondary"
-        ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-md hover:shadow-green-500/30 hover:opacity-90"
-        : "bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-md hover:shadow-violet-500/30 hover:opacity-90";
+  const gradients = {
+    primary: "linear-gradient(135deg, #818CF8 0%, #22D3EE 100%)",
+    secondary: "linear-gradient(135deg, #34D399 0%, #22D3EE 100%)",
+    ai: "linear-gradient(135deg, #A78BFA 0%, #818CF8 100%)",
+  };
   return (
     <motion.button
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
       disabled={disabled}
-      className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 disabled:opacity-50 ${base} ${className}`}
+      className={`text-sm font-semibold transition-all disabled:opacity-50 inline-flex items-center justify-center gap-2 ${className}`}
+      style={{
+        borderRadius: 999,
+        padding: "10px 20px",
+        background: gradients[variant] || gradients.primary,
+        color: "#07090F",
+        boxShadow:
+          "0 10px 30px -10px rgba(34,211,238,0.55), inset 0 1px 0 rgba(255,255,255,0.35)",
+        border: "none",
+        cursor: disabled ? "not-allowed" : "pointer",
+      }}
     >
       {children}
     </motion.button>
@@ -632,7 +841,10 @@ function GradBtn({
 function FieldError({ message }) {
   if (!message) return null;
   return (
-    <p className="mt-1 text-xs text-red-400 flex items-center gap-1">
+    <p
+      className="mt-1 text-xs flex items-center gap-1"
+      style={{ color: "#FB7185" }}
+    >
       <AlertCircle className="h-3 w-3 shrink-0" />
       {message}
     </p>
@@ -647,7 +859,6 @@ function ConfirmDialog({
   onCancel,
   confirmLabel = "Delete",
 }) {
-  const { dark } = useTheme();
   return (
     <Dialog
       open={open}
@@ -656,26 +867,39 @@ function ConfirmDialog({
       }}
     >
       <DialogContent
-        className={`max-w-sm rounded-2xl ${dark ? "bg-[#1e2235] border-white/10 text-gray-200" : ""}`}
+        className="max-w-sm rounded-2xl"
+        style={{
+          background: "var(--modal-bg)",
+          border: "1px solid var(--modal-bdr)",
+          color: "var(--tx)",
+        }}
       >
         <DialogHeader>
-          <DialogTitle className={dark ? "text-gray-100" : "text-gray-800"}>
-            {title}
-          </DialogTitle>
-          <DialogDescription className={dark ? "text-gray-400" : ""}>
+          <DialogTitle style={{ color: "var(--tx)" }}>{title}</DialogTitle>
+          <DialogDescription style={{ color: "var(--tm)" }}>
             {description}
           </DialogDescription>
         </DialogHeader>
         <div className="flex justify-end gap-2 mt-2">
           <button
             onClick={onCancel}
-            className={`px-4 py-2 rounded-xl border text-sm transition-colors ${dark ? "border-white/10 text-gray-400 hover:bg-white/5" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+            className="px-4 py-2 rounded-xl text-sm transition-all"
+            style={{
+              border: "1px solid var(--bd)",
+              color: "var(--tm)",
+              background: "var(--c2)",
+            }}
           >
             Cancel
           </button>
           <button
             onClick={() => onConfirm?.()}
-            className="px-4 py-2 rounded-xl bg-red-500 text-white text-sm hover:bg-red-600 transition-colors"
+            className="px-4 py-2 rounded-xl text-sm font-medium"
+            style={{
+              background: "linear-gradient(135deg, #FB7185, #F472B6)",
+              color: "#07090F",
+              border: "none",
+            }}
           >
             {confirmLabel}
           </button>
@@ -693,7 +917,6 @@ function AmountInputDialog({
   onConfirm,
   onCancel,
 }) {
-  const { dark } = useTheme();
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
@@ -720,22 +943,23 @@ function AmountInputDialog({
       }}
     >
       <DialogContent
-        className={`max-w-sm rounded-2xl ${dark ? "bg-[#1e2235] border-white/10" : ""}`}
+        className="max-w-sm rounded-2xl"
+        style={{
+          background: "var(--modal-bg)",
+          border: "1px solid var(--modal-bdr)",
+          color: "var(--tx)",
+        }}
       >
         <DialogHeader>
-          <DialogTitle className={dark ? "text-gray-100" : "text-gray-800"}>
-            {title}
-          </DialogTitle>
+          <DialogTitle style={{ color: "var(--tx)" }}>{title}</DialogTitle>
           {description && (
-            <DialogDescription className={dark ? "text-gray-400" : ""}>
+            <DialogDescription style={{ color: "var(--tm)" }}>
               {description}
             </DialogDescription>
           )}
         </DialogHeader>
         <div className="mt-2 space-y-2">
-          <label
-            className={`text-xs ${dark ? "text-gray-400" : "text-gray-500"}`}
-          >
+          <label className="text-xs" style={{ color: "var(--tm)" }}>
             Amount ({currency?.code})
           </label>
           <ThemedInput
@@ -753,7 +977,10 @@ function AmountInputDialog({
             }}
           />
           {error && (
-            <p className="text-xs text-red-400 flex items-center gap-1">
+            <p
+              className="text-xs flex items-center gap-1"
+              style={{ color: "#FB7185" }}
+            >
               <AlertCircle className="h-3 w-3" />
               {error}
             </p>
@@ -762,19 +989,392 @@ function AmountInputDialog({
         <div className="flex justify-end gap-2 mt-3">
           <button
             onClick={onCancel}
-            className={`px-4 py-2 rounded-xl border text-sm transition-colors ${dark ? "border-white/10 text-gray-400 hover:bg-white/5" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+            className="px-4 py-2 rounded-xl text-sm transition-all"
+            style={{
+              border: "1px solid var(--bd)",
+              color: "var(--tm)",
+              background: "var(--c2)",
+            }}
           >
             Cancel
           </button>
           <button
             onClick={handleConfirm}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white text-sm hover:opacity-90 shadow-md"
+            className="px-4 py-2 rounded-xl text-sm font-medium"
+            style={{
+              background: "linear-gradient(135deg, #818CF8 0%, #22D3EE 100%)",
+              color: "#07090F",
+              border: "none",
+            }}
           >
             Confirm
           </button>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+const SIDEBAR_NAV = [
+  { icon: Wallet, label: "Dashboard" },
+  { icon: TrendingUp, label: "Expenses" },
+  { icon: Target, label: "Budgets" },
+  { icon: PiggyBank, label: "Savings" },
+  { icon: Sparkles, label: "AI Insights", badge: "NEW" },
+  { icon: Settings, label: "Settings", desktopOnly: true },
+];
+
+function AppSidebar({ user, activeTab, onTabChange }) {
+  const { dark } = useTheme();
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = React.useRef(null);
+
+  useEffect(() => {
+    if (!profileOpen) return;
+    function handler(e) {
+      if (profileRef.current && !profileRef.current.contains(e.target))
+        setProfileOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [profileOpen]);
+
+  const firstName =
+    user?.displayName?.split(" ")[0] || user?.email?.split("@")[0] || "there";
+  const initial = (user?.displayName || user?.email || "A")[0].toUpperCase();
+
+  return (
+    <aside
+      className="hidden lg:flex flex-col fixed left-0 top-0 h-screen z-40 bg-white dark:bg-[#141828] border-r border-slate-200 dark:border-white/[0.06]"
+      style={{ width: 224 }}
+    >
+      {/* Logo */}
+      <div className="px-5 pt-6 pb-5 flex items-center gap-3 border-b border-slate-200 dark:border-white/[0.06]">
+        <img
+          src="/brand/ancy-icon-512.png"
+          alt="Ancy"
+          className="w-9 h-9 rounded-[10px] shrink-0"
+        />
+        <div>
+          <div
+            className="font-bold text-[15px] leading-tight"
+            style={{ color: "var(--tx)" }}
+          >
+            Ancy
+          </div>
+          <div
+            className="text-[10px] leading-tight"
+            style={{ color: "var(--tf)" }}
+          >
+            Money tracker
+          </div>
+        </div>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 px-3 py-4 space-y-0.5">
+        {SIDEBAR_NAV.map(({ icon: Icon, label, badge, desktopOnly }) => {
+          const isActive = activeTab === label;
+          return (
+            <button
+              key={label}
+              onClick={() => onTabChange(label)}
+              className={`${desktopOnly ? "hidden lg:flex" : "flex"} w-full items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all border ${
+                isActive
+                  ? "bg-indigo-50 dark:bg-indigo-500/[0.18] text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/[0.22]"
+                  : "text-slate-600 dark:text-[#9098AE] bg-transparent border-transparent hover:bg-slate-100 dark:hover:bg-white/5"
+              }`}
+              style={
+                isActive && !dark
+                  ? {}
+                  : isActive
+                    ? {
+                        background:
+                          "linear-gradient(135deg, rgba(129,140,248,0.18) 0%, rgba(34,211,238,0.08) 100%)",
+                        boxShadow: "0 4px 16px -8px rgba(129,140,248,0.4)",
+                      }
+                    : {}
+              }
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="flex-1 text-left">{label}</span>
+              {badge && (
+                <span
+                  className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                  style={{
+                    background: "linear-gradient(135deg, #818CF8, #22D3EE)",
+                    color: "#07090F",
+                  }}
+                >
+                  {badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Footer */}
+      <div className="px-3 py-3 border-t border-slate-200 dark:border-white/[0.06]">
+        {/* Theme row */}
+        <div className="flex items-center justify-between px-1 mb-2">
+          <span className="text-[11px] text-slate-500 dark:text-[#5E667E]">
+            {dark ? "Dark mode" : "Light mode"}
+          </span>
+          <ThemeToggle />
+        </div>
+
+        {/* User profile + sign-out dropdown */}
+        {user && (
+          <div ref={profileRef} className="relative">
+            <button
+              onClick={() => setProfileOpen((o) => !o)}
+              className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl transition-all"
+              style={{ background: profileOpen ? "var(--c6)" : "transparent" }}
+            >
+              <div
+                className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs font-bold overflow-hidden"
+                style={{
+                  background: "linear-gradient(135deg, #818CF8, #22D3EE)",
+                  color: "#07090F",
+                }}
+              >
+                {user.photoURL ? (
+                  <img
+                    src={user.photoURL}
+                    alt=""
+                    className="w-8 h-8 object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  initial
+                )}
+              </div>
+              <div className="flex-1 min-w-0 text-left">
+                <div
+                  className="text-xs font-semibold truncate"
+                  style={{ color: "var(--tx)" }}
+                >
+                  {firstName}
+                </div>
+                <div
+                  className="text-[10px] truncate"
+                  style={{ color: "var(--tf)" }}
+                >
+                  {user.email}
+                </div>
+              </div>
+              <MoreHorizontal
+                className="h-4 w-4 shrink-0"
+                style={{ color: "var(--tf)" }}
+              />
+            </button>
+
+            <AnimatePresence>
+              {profileOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                  transition={{ duration: 0.13 }}
+                  className="absolute bottom-full left-0 right-0 mb-1 rounded-2xl shadow-2xl overflow-hidden z-50"
+                  style={{
+                    background: "var(--sheet-bg)",
+                    border: "1px solid var(--bd)",
+                  }}
+                >
+                  <button
+                    className="w-full text-left px-3 py-2.5 text-sm flex items-center gap-2 transition-opacity hover:opacity-75"
+                    style={{ color: "#FB7185" }}
+                    onClick={() => {
+                      setProfileOpen(false);
+                      signOutUser();
+                    }}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Sign out
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+const MOBILE_NAV = [
+  { icon: LayoutDashboard, label: "Dashboard", tab: "Dashboard" },
+  { icon: Receipt, label: "Expenses", tab: "Expenses" },
+  { icon: PieChartIcon, label: "Budgets", tab: "Budgets" },
+  { icon: Target, label: "Savings", tab: "Savings" },
+  { icon: Sparkles, label: "Insights", tab: "AI Insights" },
+];
+
+function MobileTabBar({ activeTab, onTabChange }) {
+  return (
+    <motion.div
+      initial={{ y: 100 }}
+      animate={{ y: 0 }}
+      transition={{ type: "spring", damping: 28, stiffness: 260 }}
+      className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch bg-white dark:bg-[#141828] border-t border-slate-200 dark:border-white/[0.08]"
+      style={{
+        backdropFilter: "blur(24px)",
+        WebkitBackdropFilter: "blur(24px)",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+      }}
+    >
+      {MOBILE_NAV.map(({ icon: Icon, label, tab }) => {
+        const isActive = activeTab === tab;
+        return (
+          <button
+            key={tab}
+            onClick={() => onTabChange(tab)}
+            className={`relative flex-1 flex flex-col items-center justify-center py-2 min-h-[56px] gap-0.5 transition-colors ${isActive ? "text-indigo-500 dark:text-[#818CF8]" : "text-slate-400 dark:text-[#5E667E]"}`}
+          >
+            <Icon className="h-5 w-5" strokeWidth={isActive ? 2.2 : 1.8} />
+            <span className="text-[9px] font-medium tracking-wide">
+              {label}
+            </span>
+            {isActive && (
+              <span
+                className="absolute bottom-0 w-8 h-0.5 rounded-full"
+                style={{
+                  background: "linear-gradient(90deg, #818CF8, #22D3EE)",
+                }}
+              />
+            )}
+          </button>
+        );
+      })}
+    </motion.div>
+  );
+}
+
+function MobileAvatarMenu({ user, onTabChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef(null);
+  const { dark, toggle } = useTheme();
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  if (!user) return null;
+
+  const initial = (user.displayName || user.email || "A")[0].toUpperCase();
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="h-9 w-9 rounded-full flex items-center justify-center overflow-hidden shrink-0"
+        style={{ background: "linear-gradient(135deg, #818CF8, #22D3EE)" }}
+        aria-label="Account menu"
+      >
+        {user.photoURL ? (
+          <img
+            src={user.photoURL}
+            alt=""
+            className="h-9 w-9 object-cover"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <span className="text-sm font-bold" style={{ color: "#07090F" }}>
+            {initial}
+          </span>
+        )}
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.95 }}
+            transition={{ duration: 0.14 }}
+            className="absolute right-0 top-11 w-44 rounded-2xl shadow-2xl z-50 overflow-hidden"
+            style={{
+              background: "var(--sheet-bg)",
+              border: "1px solid var(--bd)",
+            }}
+          >
+            <div
+              className="px-3 pt-3 pb-2"
+              style={{ borderBottom: "1px solid var(--bd-soft)" }}
+            >
+              <p
+                className="text-xs font-semibold truncate"
+                style={{ color: "var(--tx)" }}
+              >
+                {user.displayName || "Account"}
+              </p>
+              <p
+                className="text-[10px] truncate mt-0.5"
+                style={{ color: "var(--tf)" }}
+              >
+                {user.email}
+              </p>
+            </div>
+            <div style={{ borderBottom: "1px solid var(--bd-soft)" }}>
+              <button
+                className="w-full text-left px-3 py-2.5 text-sm flex items-center gap-2 hover:opacity-80 transition-opacity"
+                style={{ color: "var(--tx)" }}
+                onClick={() => {
+                  setOpen(false);
+                  onTabChange("Settings");
+                }}
+              >
+                <Settings
+                  className="h-3.5 w-3.5"
+                  style={{ color: "var(--tf)" }}
+                />
+                Settings
+              </button>
+              <button
+                className="w-full text-left px-3 py-2.5 text-sm flex items-center justify-between gap-2 hover:opacity-80 transition-opacity"
+                style={{ color: "var(--tx)" }}
+                onClick={toggle}
+              >
+                <span className="flex items-center gap-2">
+                  {dark ? (
+                    <Moon
+                      className="h-3.5 w-3.5"
+                      style={{ color: "#FBBF24" }}
+                    />
+                  ) : (
+                    <Sun className="h-3.5 w-3.5" style={{ color: "#FB923C" }} />
+                  )}
+                  {dark ? "Dark mode" : "Light mode"}
+                </span>
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded-full"
+                  style={{ background: "var(--c8)", color: "var(--tf)" }}
+                >
+                  ON
+                </span>
+              </button>
+            </div>
+            <button
+              className="w-full text-left px-3 py-2.5 text-sm flex items-center gap-2 hover:opacity-80 transition-opacity"
+              style={{ color: "#FB7185" }}
+              onClick={() => {
+                setOpen(false);
+                signOutUser();
+              }}
+            >
+              <X className="h-3.5 w-3.5" />
+              Sign out
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -785,7 +1385,12 @@ function ThemeToggle() {
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
       onClick={toggle}
-      className={`h-9 w-9 rounded-full flex items-center justify-center border transition-colors shadow-sm ${dark ? "bg-[#252a3d] border-white/10 text-yellow-400 hover:bg-white/10" : "bg-white/70 border-gray-200/60 text-gray-600 hover:bg-white"}`}
+      className="h-9 w-9 rounded-full flex items-center justify-center transition-all"
+      style={{
+        background: "var(--c5)",
+        border: "1px solid var(--bd)",
+        color: dark ? "#FBBF24" : "var(--tm)",
+      }}
     >
       <AnimatePresence mode="wait">
         {dark ? (
@@ -814,10 +1419,18 @@ function ThemeToggle() {
   );
 }
 
-function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast, showAITip, onAITipDismiss }) {
-  const { dark } = useTheme();
+function QuickAddBar({
+  categories,
+  selectedCurrency,
+  onExpenseAdd,
+  addToast,
+  showAITip,
+  onAITipDismiss,
+  isOnline,
+}) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState("Parsing...");
   const [previews, setPreviews] = useState([]);
   const [selected, setSelected] = useState({});
 
@@ -831,15 +1444,29 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast, sho
 
   async function handleParse() {
     if (!text.trim() || isAtLimit) return;
+    if (!isOnline) {
+      addToast("AI features need an internet connection. Try again when you're back online.", "info");
+      return;
+    }
     setLoading(true);
+    setLoadingMsg("Parsing...");
     setPreviews([]);
     setSelected({});
+    const slowTimer = setTimeout(
+      () => setLoadingMsg("Still working on it…"),
+      10000,
+    );
     try {
-      const result = await parseExpenseFn({
-        text,
-        categories,
-        currency: selectedCurrency.code,
-      });
+      const result = await Promise.race([
+        parseExpenseFn({ text, categories, currency: selectedCurrency.code }),
+        new Promise((_, reject) =>
+          setTimeout(
+            () =>
+              reject(Object.assign(new Error("TIMEOUT"), { code: "TIMEOUT" })),
+            30000,
+          ),
+        ),
+      ]);
       const expenses = result.data.expenses;
       if (!expenses || expenses.length === 0) {
         addToast("No expenses found. Try 'spent 500 on groceries'", "error");
@@ -857,11 +1484,17 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast, sho
       });
       setSelected(allSelected);
     } catch (err) {
-      addToast(
-        err.message || "Could not parse. Try 'spent 500 on food today'",
-        "error",
-      );
+      console.error("[Functions] parseExpense failed:", err);
+      if (err.code === "TIMEOUT") {
+        addToast(
+          "AI is unusually slow right now. Try again in a moment.",
+          "error",
+        );
+      } else {
+        addToast(functionsErrorMsg(err), "error");
+      }
     } finally {
+      clearTimeout(slowTimer);
       setLoading(false);
     }
   }
@@ -877,19 +1510,25 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast, sho
       return;
     }
     const results = toAdd.map((exp) => onExpenseAdd(exp)).filter(Boolean);
-    const crossKeys = [
-      ...new Set(results.filter((r) => r.crossMonth).map((r) => r.targetMonthKey)),
-    ];
-    if (crossKeys.length > 0) {
-      addToast(
-        `Expense${toAdd.length > 1 ? "s" : ""} added to ${crossKeys.join(", ")}`,
-        "info",
-      );
+    if (!isOnline) {
+      addToast("Saved locally — will sync when you're back online", "info");
     } else {
-      addToast(
-        `${toAdd.length} expense${toAdd.length > 1 ? "s" : ""} added!`,
-        "success",
-      );
+      const crossKeys = [
+        ...new Set(
+          results.filter((r) => r.crossMonth).map((r) => r.targetMonthKey),
+        ),
+      ];
+      if (crossKeys.length > 0) {
+        addToast(
+          `Expense${toAdd.length > 1 ? "s" : ""} added to ${crossKeys.join(", ")}`,
+          "info",
+        );
+      } else {
+        addToast(
+          `${toAdd.length} expense${toAdd.length > 1 ? "s" : ""} added!`,
+          "success",
+        );
+      }
     }
     setText("");
     setPreviews([]);
@@ -907,26 +1546,26 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast, sho
   return (
     <div
       data-quickadd-bar
-      className={`relative p-4 rounded-2xl border overflow-hidden ${
-        dark
-          ? "bg-gradient-to-r from-violet-500/20 to-cyan-500/20 border-violet-500/30"
-          : "bg-indigo-500 border-transparent"
-      }`}
+      className="relative p-5 rounded-2xl overflow-hidden"
+      style={{
+        background:
+          "linear-gradient(180deg, rgba(129,140,248,0.10) 0%, rgba(34,211,238,0.04) 100%)",
+        border: "1px solid rgba(129,140,248,0.20)",
+      }}
     >
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Zap
-            className={`h-4 w-4 ${dark ? "text-violet-400" : "text-white"}`}
-          />
+          <Zap className="h-4 w-4" style={{ color: "#818CF8" }} />
           <span
-            className={`text-xs font-semibold ${dark ? "text-violet-300" : "text-white"}`}
+            className="text-xs font-semibold"
+            style={{ color: "var(--tm)" }}
           >
             Quick Add — type up to {MAX_EXPENSES} expenses naturally
           </span>
         </div>
         {text.length > 0 && (
           <span
-            className={`text-xs font-medium ${isAtLimit ? "text-red-400" : isNearLimit ? (dark ? "text-orange-400" : "text-orange-200") : dark ? "text-violet-400" : "text-white/70"}`}
+            className={`text-xs font-medium ${isAtLimit ? "text-[#FB7185]" : isNearLimit ? "text-[#FBBF24]" : "text-[#818CF8]"}`}
           >
             {remaining} left
           </span>
@@ -945,37 +1584,41 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast, sho
           onKeyDown={(e) => {
             if (e.key === "Enter") handleParse();
           }}
-          className={`flex-1 px-3 py-2.5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 transition-all
-            ${
-              dark
-                ? "bg-[#252a3d] border border-white/10 text-gray-200 placeholder-gray-500"
-                : "bg-white/20 border border-white/30 text-white placeholder-white/60 focus:bg-white/30"
-            }`}
+          className="flex-1 px-3 py-2.5 rounded-xl text-sm transition-all"
+          style={{
+            background: "var(--c4)",
+            border: "1px solid var(--c10)",
+            color: "var(--tx)",
+            outline: "none",
+            fontFamily: "inherit",
+          }}
         />
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={handleParse}
           disabled={loading || !text.trim() || isAtLimit}
-          className={`px-4 py-2.5 rounded-xl text-sm font-medium shadow-md hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap
-            ${
-              dark
-                ? "bg-gradient-to-r from-violet-500 to-purple-600 text-white"
-                : "bg-white/20 border border-white/40 text-white backdrop-blur-sm hover:bg-white/30"
-            }`}
+          className="px-4 py-2.5 rounded-full text-sm font-semibold disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap"
+          style={{
+            background: "linear-gradient(135deg, #A78BFA 0%, #818CF8 100%)",
+            color: "#07090F",
+            border: "none",
+            boxShadow: "0 8px 24px -8px rgba(167,139,250,0.5)",
+          }}
         >
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Sparkles className="h-4 w-4" />
           )}
-          {loading ? "Parsing..." : "Parse"}
+          {loading ? loadingMsg : "Parse"}
         </motion.button>
       </div>
 
       {!previews.length && !loading && (
         <p
-          className={`mt-2 text-[11px] ${dark ? "text-violet-400/60" : "text-white/60"}`}
+          className="mt-2 text-[11px]"
+          style={{ color: "rgba(129,140,248,0.6)" }}
         >
           Tip: Separate multiple expenses with commas. Max {MAX_EXPENSES} at a
           time.
@@ -988,12 +1631,11 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast, sho
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className={`mt-3 p-3 rounded-xl border ${dark ? "bg-white/5 border-white/10" : "bg-white/90 border-white/40"}`}
+            className="mt-3 p-3 rounded-xl"
+            style={{ background: "var(--c4)", border: "1px solid var(--bd)" }}
           >
             <div className="flex items-center justify-between mb-2">
-              <p
-                className={`text-xs font-medium ${dark ? "text-gray-300" : "text-gray-700"}`}
-              >
+              <p className="text-xs font-medium" style={{ color: "var(--tx)" }}>
                 Found {previews.length} expense{previews.length > 1 ? "s" : ""}{" "}
                 — select which to add:
               </p>
@@ -1007,7 +1649,8 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast, sho
                     });
                     setSelected(next);
                   }}
-                  className={`text-[11px] underline ${dark ? "text-violet-400" : "text-violet-600"}`}
+                  className="text-[11px] underline"
+                  style={{ color: "#818CF8" }}
                 >
                   {Object.values(selected).every(Boolean)
                     ? "Deselect all"
@@ -1024,21 +1667,32 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast, sho
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.05 }}
                   onClick={() => toggleSelect(i)}
-                  className={`flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all border ${
-                    selected[i]
-                      ? dark
-                        ? "bg-violet-500/20 border-violet-500/40"
-                        : "bg-violet-50 border-violet-200"
-                      : dark
-                        ? "bg-white/5 border-white/5 opacity-50"
-                        : "bg-gray-50 border-gray-200 opacity-50"
-                  }`}
+                  className="flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-all"
+                  style={{
+                    background: selected[i]
+                      ? "rgba(129,140,248,0.15)"
+                      : "var(--c3)",
+                    border: `1px solid ${selected[i] ? "rgba(129,140,248,0.35)" : "var(--c6)"}`,
+                    opacity: selected[i] ? 1 : 0.55,
+                  }}
                 >
                   <div
-                    className={`h-4 w-4 rounded flex items-center justify-center shrink-0 border ${selected[i] ? "bg-violet-500 border-violet-500" : dark ? "border-white/20" : "border-gray-300"}`}
+                    className="h-4 w-4 rounded flex items-center justify-center shrink-0"
+                    style={{
+                      border: selected[i] ? "none" : "1px solid var(--c20)",
+                      background: selected[i]
+                        ? "linear-gradient(135deg, #818CF8, #22D3EE)"
+                        : "transparent",
+                    }}
                   >
                     {selected[i] && (
-                      <span className="text-white text-[10px] font-bold">
+                      <span
+                        style={{
+                          color: "#07090F",
+                          fontSize: 10,
+                          fontWeight: 700,
+                        }}
+                      >
                         ✓
                       </span>
                     )}
@@ -1055,12 +1709,14 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast, sho
                     ].map((f) => (
                       <div key={f.label}>
                         <p
-                          className={`text-[10px] ${dark ? "text-gray-500" : "text-gray-400"}`}
+                          className="text-[10px]"
+                          style={{ color: "var(--tf)" }}
                         >
                           {f.label}
                         </p>
                         <p
-                          className={`text-xs font-medium truncate ${dark ? "text-gray-200" : "text-gray-800"}`}
+                          className="text-xs font-medium truncate"
+                          style={{ color: "var(--tx)" }}
                         >
                           {f.value}
                         </p>
@@ -1075,14 +1731,25 @@ function QuickAddBar({ categories, selectedCurrency, onExpenseAdd, addToast, sho
               <button
                 onClick={handleConfirm}
                 disabled={selectedCount === 0}
-                className="flex-1 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white text-xs font-medium hover:opacity-90 disabled:opacity-40 transition-opacity"
+                className="flex-1 py-2 rounded-full text-xs font-semibold disabled:opacity-40 transition-opacity"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #818CF8 0%, #22D3EE 100%)",
+                  color: "#07090F",
+                  border: "none",
+                }}
               >
                 ✓ Add {selectedCount > 0 ? `${selectedCount} ` : ""}Expense
                 {selectedCount !== 1 ? "s" : ""}
               </button>
               <button
                 onClick={handleCancel}
-                className={`flex-1 py-2 rounded-xl border text-xs transition-colors ${dark ? "border-white/10 text-gray-400 hover:bg-white/5" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+                className="flex-1 py-2 rounded-full border text-xs transition-colors"
+                style={{
+                  border: "1px solid var(--bd)",
+                  color: "var(--tm)",
+                  background: "var(--c2)",
+                }}
               >
                 ✕ Cancel
               </button>
@@ -1101,7 +1768,6 @@ function EditExpenseModal({
   onSave,
   onCancel,
 }) {
-  const { dark } = useTheme();
   const [form, setForm] = useState({
     date: "",
     category: "",
@@ -1168,24 +1834,22 @@ function EditExpenseModal({
     });
   }
 
-  const t = {
-    bg: dark ? "bg-[#1e2235]" : "bg-white",
-    text: dark ? "text-gray-100" : "text-gray-800",
-    textFaint: dark ? "text-gray-500" : "text-gray-400",
-    border: dark ? "border-white/10" : "border-gray-200",
-    input: dark
-      ? "bg-[#252a3d] border-white/10 text-gray-200 placeholder-gray-500"
-      : "bg-white border-gray-200 text-gray-800 placeholder-gray-400",
-    select: dark
-      ? "bg-[#252a3d] border-white/10 text-gray-200"
-      : "bg-white border-gray-200 text-gray-800",
-  };
+  const inputStyle = (hasError) => ({
+    background: "var(--c3)",
+    border: `1px solid ${hasError ? "rgba(251,113,133,0.5)" : "var(--bd)"}`,
+    color: "var(--tx)",
+    outline: "none",
+    fontFamily: "inherit",
+    colorScheme: "dark",
+  });
 
   const FormContent = () => (
     <div className="space-y-4">
       {/* Date */}
       <div className="space-y-1">
-        <label className={`text-xs font-medium ${t.textFaint}`}>Date</label>
+        <label className="text-xs font-medium" style={{ color: "var(--tm)" }}>
+          Date
+        </label>
         <input
           type="date"
           value={form.date}
@@ -1193,10 +1857,14 @@ function EditExpenseModal({
             setForm((p) => ({ ...p, date: e.target.value }));
             if (errors.date) setErrors((p) => ({ ...p, date: "" }));
           }}
-          className={`w-full px-3 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all ${t.input} ${errors.date ? "border-red-400" : ""}`}
+          className="w-full px-3 py-2.5 rounded-xl text-sm transition-all"
+          style={inputStyle(errors.date)}
         />
         {errors.date && (
-          <p className="text-xs text-red-400 flex items-center gap-1">
+          <p
+            className="text-xs flex items-center gap-1"
+            style={{ color: "#FB7185" }}
+          >
             <AlertCircle className="h-3 w-3" />
             {errors.date}
           </p>
@@ -1205,14 +1873,17 @@ function EditExpenseModal({
 
       {/* Category */}
       <div className="space-y-1">
-        <label className={`text-xs font-medium ${t.textFaint}`}>Category</label>
+        <label className="text-xs font-medium" style={{ color: "var(--tm)" }}>
+          Category
+        </label>
         <select
           value={form.category}
           onChange={(e) => {
             setForm((p) => ({ ...p, category: e.target.value }));
             if (errors.category) setErrors((p) => ({ ...p, category: "" }));
           }}
-          className={`w-full px-3 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all ${t.select} ${errors.category ? "border-red-400" : ""}`}
+          className="w-full px-3 py-2.5 rounded-xl text-sm transition-all"
+          style={{ ...inputStyle(errors.category), background: "var(--c5)" }}
         >
           {categories.map((c) => (
             <option key={c} value={c}>
@@ -1221,7 +1892,10 @@ function EditExpenseModal({
           ))}
         </select>
         {errors.category && (
-          <p className="text-xs text-red-400 flex items-center gap-1">
+          <p
+            className="text-xs flex items-center gap-1"
+            style={{ color: "#FB7185" }}
+          >
             <AlertCircle className="h-3 w-3" />
             {errors.category}
           </p>
@@ -1230,7 +1904,7 @@ function EditExpenseModal({
 
       {/* Amount */}
       <div className="space-y-1">
-        <label className={`text-xs font-medium ${t.textFaint}`}>
+        <label className="text-xs font-medium" style={{ color: "var(--tm)" }}>
           Amount ({selectedCurrency?.code})
         </label>
         <input
@@ -1244,10 +1918,14 @@ function EditExpenseModal({
             }));
             if (errors.amount) setErrors((p) => ({ ...p, amount: "" }));
           }}
-          className={`w-full px-3 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all ${t.input} ${errors.amount ? "border-red-400" : ""}`}
+          className="w-full px-3 py-2.5 rounded-xl text-sm transition-all"
+          style={inputStyle(errors.amount)}
         />
         {errors.amount && (
-          <p className="text-xs text-red-400 flex items-center gap-1">
+          <p
+            className="text-xs flex items-center gap-1"
+            style={{ color: "#FB7185" }}
+          >
             <AlertCircle className="h-3 w-3" />
             {errors.amount}
           </p>
@@ -1256,7 +1934,7 @@ function EditExpenseModal({
 
       {/* Description */}
       <div className="space-y-1">
-        <label className={`text-xs font-medium ${t.textFaint}`}>
+        <label className="text-xs font-medium" style={{ color: "var(--tm)" }}>
           Description (optional)
         </label>
         <input
@@ -1265,7 +1943,8 @@ function EditExpenseModal({
           onChange={(e) =>
             setForm((p) => ({ ...p, description: e.target.value }))
           }
-          className={`w-full px-3 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all ${t.input}`}
+          className="w-full px-3 py-2.5 rounded-xl text-sm transition-all"
+          style={inputStyle(false)}
         />
       </div>
 
@@ -1276,23 +1955,35 @@ function EditExpenseModal({
             onClick={() =>
               setForm((p) => ({ ...p, isRecurring: !p.isRecurring }))
             }
-            className={`relative w-9 h-5 rounded-full transition-colors ${form.isRecurring ? "bg-indigo-500" : dark ? "bg-white/20" : "bg-gray-200"}`}
+            className="relative w-9 h-5 rounded-full transition-colors"
+            style={{ background: form.isRecurring ? "#818CF8" : "var(--c15)" }}
           >
             <div
               className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${form.isRecurring ? "translate-x-4" : ""}`}
             />
           </div>
-          <span className={`text-xs ${t.textFaint}`}>Save as recurring</span>
+          <span className="text-xs" style={{ color: "var(--tm)" }}>
+            Save as recurring
+          </span>
         </label>
         {form.isRecurring && (
           <div className="flex items-center gap-2">
-            <span className={`text-xs ${t.textFaint}`}>Frequency:</span>
+            <span className="text-xs" style={{ color: "var(--tm)" }}>
+              Frequency:
+            </span>
             <select
               value={form.frequency}
               onChange={(e) =>
                 setForm((p) => ({ ...p, frequency: e.target.value }))
               }
-              className={`h-7 px-2 rounded-lg border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 ${dark ? "bg-[#252a3d] border-white/10 text-gray-200" : "bg-white border-gray-200 text-gray-700"}`}
+              className="h-7 px-2 rounded-lg text-xs"
+              style={{
+                background: "var(--c5)",
+                border: "1px solid var(--c10)",
+                color: "var(--tx)",
+                outline: "none",
+                colorScheme: "dark",
+              }}
             >
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
@@ -1307,13 +1998,23 @@ function EditExpenseModal({
       <div className="flex gap-2 pt-2">
         <button
           onClick={onCancel}
-          className={`flex-1 py-2.5 rounded-xl border text-sm transition-colors ${dark ? "border-white/10 text-gray-400 hover:bg-white/5" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+          className="flex-1 py-2.5 rounded-xl text-sm transition-colors"
+          style={{
+            border: "1px solid var(--c10)",
+            color: "var(--tm)",
+            background: "transparent",
+          }}
         >
           Cancel
         </button>
         <button
           onClick={handleSave}
-          className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white text-sm font-medium hover:opacity-90 transition-opacity shadow-md"
+          className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-90"
+          style={{
+            background: "linear-gradient(135deg, #818CF8 0%, #22D3EE 100%)",
+            color: "#07090F",
+            border: "none",
+          }}
         >
           Save Changes
         </button>
@@ -1341,10 +2042,20 @@ function EditExpenseModal({
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className={`fixed bottom-0 left-0 right-0 z-50 ${t.bg} border-t ${t.border} rounded-t-3xl p-5 pb-8 max-h-[90vh] overflow-y-auto`}
+              className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl p-5 pb-8 max-h-[90vh] overflow-y-auto"
+              style={{
+                background: "var(--sheet-bg)",
+                borderTop: "1px solid var(--bd)",
+              }}
             >
-              <div className="w-10 h-1 rounded-full bg-gray-300 mx-auto mb-4" />
-              <p className={`text-base font-semibold mb-4 ${t.text}`}>
+              <div
+                className="w-10 h-1 rounded-full mx-auto mb-4"
+                style={{ background: "var(--c20)" }}
+              />
+              <p
+                className="text-base font-semibold mb-4"
+                style={{ color: "var(--tx)" }}
+              >
                 Edit Expense
               </p>
               <FormContent />
@@ -1364,16 +2075,22 @@ function EditExpenseModal({
       }}
     >
       <DialogContent
-        className={`max-w-md rounded-2xl ${dark ? "bg-[#1e2235] border-white/10" : ""}`}
+        className="max-w-md rounded-2xl"
+        style={{
+          background: "var(--modal-bg)",
+          border: "1px solid var(--modal-bdr)",
+          color: "var(--tx)",
+        }}
       >
         <DialogHeader>
           <DialogTitle
-            className={`flex items-center gap-2 ${dark ? "text-gray-100" : "text-gray-800"}`}
+            className="flex items-center gap-2"
+            style={{ color: "var(--tx)" }}
           >
             <Pencil className="h-4 w-4 text-indigo-400" />
             Edit Expense
           </DialogTitle>
-          <DialogDescription className={dark ? "text-gray-400" : ""}>
+          <DialogDescription style={{ color: "var(--tm)" }}>
             Update the details for this expense.
           </DialogDescription>
         </DialogHeader>
@@ -1391,7 +2108,6 @@ function RecurringReviewModal({
   onConfirm,
   selectedCurrency,
 }) {
-  const { dark } = useTheme();
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -1419,20 +2135,9 @@ function RecurringReviewModal({
     .filter((_, i) => selectedRecurring[i])
     .reduce((sum, r) => sum + r.amount, 0);
 
-  const t = {
-    bg: dark ? "bg-[#1e2235]" : "bg-white",
-    text: dark ? "text-gray-100" : "text-gray-800",
-    textFaint: dark ? "text-gray-500" : "text-gray-400",
-    border: dark ? "border-white/10" : "border-gray-200",
-    itemBg: dark ? "bg-white/5 border-white/5" : "bg-gray-50 border-gray-100",
-    selectedBg: dark
-      ? "bg-indigo-500/20 border-indigo-500/40"
-      : "bg-indigo-50 border-indigo-200",
-  };
-
   const Content = () => (
     <div className="space-y-3">
-      <p className={`text-xs ${t.textFaint}`}>
+      <p className="text-xs" style={{ color: "var(--tm)" }}>
         Select which recurring expenses to add to this period:
       </p>
 
@@ -1446,7 +2151,8 @@ function RecurringReviewModal({
           });
           setSelectedRecurring(next);
         }}
-        className={`text-xs underline ${dark ? "text-indigo-400" : "text-indigo-600"}`}
+        className="text-xs underline"
+        style={{ color: "#818CF8" }}
       >
         {Object.values(selectedRecurring).every(Boolean)
           ? "Deselect all"
@@ -1459,23 +2165,43 @@ function RecurringReviewModal({
           <motion.div
             key={r.id}
             onClick={() => setSelectedRecurring((p) => ({ ...p, [i]: !p[i] }))}
-            className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${selectedRecurring[i] ? t.selectedBg : t.itemBg}`}
+            className="flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all"
+            style={{
+              background: selectedRecurring[i]
+                ? "rgba(129,140,248,0.15)"
+                : "var(--c4)",
+              border: `1px solid ${selectedRecurring[i] ? "rgba(129,140,248,0.35)" : "var(--c6)"}`,
+            }}
           >
             {/* Checkbox */}
             <div
-              className={`h-4 w-4 rounded flex items-center justify-center shrink-0 border ${selectedRecurring[i] ? "bg-indigo-500 border-indigo-500" : dark ? "border-white/20" : "border-gray-300"}`}
+              className="h-4 w-4 rounded flex items-center justify-center shrink-0"
+              style={{
+                background: selectedRecurring[i]
+                  ? "linear-gradient(135deg, #818CF8, #22D3EE)"
+                  : "transparent",
+                border: selectedRecurring[i] ? "none" : "1px solid var(--c20)",
+              }}
             >
               {selectedRecurring[i] && (
-                <span className="text-white text-[10px] font-bold">✓</span>
+                <span
+                  style={{ color: "#07090F", fontSize: 10, fontWeight: 700 }}
+                >
+                  ✓
+                </span>
               )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
-                <span className={`text-sm font-medium truncate ${t.text}`}>
+                <span
+                  className="text-sm font-medium truncate"
+                  style={{ color: "var(--tx)" }}
+                >
                   {r.description || r.category}
                 </span>
                 <span
-                  className={`text-sm font-semibold shrink-0 ml-2 ${dark ? "text-indigo-300" : "text-indigo-600"}`}
+                  className="text-sm font-semibold shrink-0 ml-2"
+                  style={{ color: "#818CF8" }}
                 >
                   {fmt(
                     r.amount,
@@ -1485,9 +2211,12 @@ function RecurringReviewModal({
                 </span>
               </div>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className={`text-xs ${t.textFaint}`}>{r.category}</span>
+                <span className="text-xs" style={{ color: "var(--tm)" }}>
+                  {r.category}
+                </span>
                 <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${dark ? "bg-white/10 text-gray-400" : "bg-gray-100 text-gray-500"}`}
+                  className="text-[10px] px-1.5 py-0.5 rounded-full"
+                  style={{ background: "var(--bd)", color: "var(--tm)" }}
                 >
                   {r.frequency}
                 </span>
@@ -1500,17 +2229,17 @@ function RecurringReviewModal({
       {/* Total */}
       {selectedCount > 0 && (
         <div
-          className={`p-3 rounded-xl ${dark ? "bg-indigo-500/10 border border-indigo-500/20" : "bg-indigo-50 border border-indigo-100"}`}
+          className="p-3 rounded-xl"
+          style={{
+            background: "rgba(129,140,248,0.10)",
+            border: "1px solid rgba(129,140,248,0.20)",
+          }}
         >
           <div className="flex items-center justify-between">
-            <span
-              className={`text-xs ${dark ? "text-indigo-300" : "text-indigo-600"}`}
-            >
+            <span className="text-xs" style={{ color: "#818CF8" }}>
               {selectedCount} expense{selectedCount > 1 ? "s" : ""} selected
             </span>
-            <span
-              className={`text-sm font-bold ${dark ? "text-indigo-300" : "text-indigo-600"}`}
-            >
+            <span className="text-sm font-bold" style={{ color: "#818CF8" }}>
               {fmt(totalAmount, selectedCurrency.code, selectedCurrency.locale)}
             </span>
           </div>
@@ -1521,14 +2250,24 @@ function RecurringReviewModal({
       <div className="flex gap-2 pt-1">
         <button
           onClick={onClose}
-          className={`flex-1 py-2.5 rounded-xl border text-sm transition-colors ${dark ? "border-white/10 text-gray-400 hover:bg-white/5" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+          className="flex-1 py-2.5 rounded-xl text-sm transition-colors"
+          style={{
+            border: "1px solid var(--c10)",
+            color: "var(--tm)",
+            background: "transparent",
+          }}
         >
           Skip
         </button>
         <button
           onClick={onConfirm}
           disabled={selectedCount === 0}
-          className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white text-sm font-medium hover:opacity-90 disabled:opacity-40 transition-opacity shadow-md"
+          className="flex-1 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-40 transition-opacity hover:opacity-90"
+          style={{
+            background: "linear-gradient(135deg, #818CF8 0%, #22D3EE 100%)",
+            color: "#07090F",
+            border: "none",
+          }}
         >
           Add {selectedCount > 0 ? `${selectedCount} ` : ""}Expense
           {selectedCount !== 1 ? "s" : ""}
@@ -1556,10 +2295,20 @@ function RecurringReviewModal({
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className={`fixed bottom-0 left-0 right-0 z-50 ${t.bg} border-t ${t.border} rounded-t-3xl p-5 pb-8 max-h-[85vh] overflow-y-auto`}
+              className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl p-5 pb-8 max-h-[85vh] overflow-y-auto"
+              style={{
+                background: "var(--sheet-bg)",
+                borderTop: "1px solid var(--bd)",
+              }}
             >
-              <div className="w-10 h-1 rounded-full bg-gray-300 mx-auto mb-4" />
-              <p className={`text-base font-semibold mb-4 ${t.text}`}>
+              <div
+                className="w-10 h-1 rounded-full mx-auto mb-4"
+                style={{ background: "var(--c20)" }}
+              />
+              <p
+                className="text-base font-semibold mb-4"
+                style={{ color: "var(--tx)" }}
+              >
                 🔄 Recurring Expenses
               </p>
               <Content />
@@ -1578,15 +2327,21 @@ function RecurringReviewModal({
       }}
     >
       <DialogContent
-        className={`max-w-md rounded-2xl ${dark ? "bg-[#1e2235] border-white/10" : ""}`}
+        className="max-w-md rounded-2xl"
+        style={{
+          background: "var(--modal-bg)",
+          border: "1px solid var(--modal-bdr)",
+          color: "var(--tx)",
+        }}
       >
         <DialogHeader>
           <DialogTitle
-            className={`flex items-center gap-2 ${dark ? "text-gray-100" : "text-gray-800"}`}
+            className="flex items-center gap-2"
+            style={{ color: "var(--tx)" }}
           >
             🔄 Recurring Expenses
           </DialogTitle>
-          <DialogDescription className={dark ? "text-gray-400" : ""}>
+          <DialogDescription style={{ color: "var(--tm)" }}>
             These are your recurring expenses. Add them to this period?
           </DialogDescription>
         </DialogHeader>
@@ -1605,6 +2360,34 @@ export default function ExpenseTracker() {
   const { selectedCurrency, changeCurrency } = useCurrency();
   const { user, loading } = useAuth();
   const { toasts, addToast } = useToast();
+  const isOnline = useNetworkStatus();
+  const wasOffline = useRef(false);
+  const [pendingIds, setPendingIds] = useState(() => new Set());
+
+  // Reconnection toast + clear pending sync indicators
+  useEffect(() => {
+    if (isOnline && wasOffline.current) {
+      addToast("Back online — syncing your changes...", "success");
+      const timer = setTimeout(() => setPendingIds(new Set()), 3000);
+      wasOffline.current = false;
+      return () => clearTimeout(timer);
+    }
+    if (!isOnline) wasOffline.current = true;
+  }, [isOnline, addToast]);
+
+  // Saves with offline-aware toast. type only used when online.
+  const toastSaved = useCallback((msg, type = "success") => {
+    if (isOnline) {
+      addToast(msg, type);
+    } else {
+      addToast("Saved locally — will sync when you're back online", "info");
+    }
+  }, [isOnline, addToast]);
+
+  // Track items added/edited while offline so we can show a sync indicator
+  const markPending = useCallback((id) => {
+    if (!isOnline) setPendingIds((prev) => new Set([...prev, id]));
+  }, [isOnline]);
 
   const [dark, setDark] = useState(() => {
     try {
@@ -1613,6 +2396,16 @@ export default function ExpenseTracker() {
       return false;
     }
   });
+  useEffect(() => {
+    const html = document.documentElement;
+    if (dark) {
+      html.classList.add("ancy-dark", "dark");
+      html.classList.remove("ancy-light");
+    } else {
+      html.classList.add("ancy-light");
+      html.classList.remove("ancy-dark", "dark");
+    }
+  }, [dark]);
   const toggleTheme = useCallback(() => {
     setDark((d) => {
       const next = !d;
@@ -1645,11 +2438,27 @@ export default function ExpenseTracker() {
   const [sourceErrors, setSourceErrors] = useState({});
   const [expErrors, setExpErrors] = useState({});
   const [goalErrors, setGoalErrors] = useState({});
-  const [insightsOpen, setInsightsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState(
+    () => localStorage.getItem("ancy-default-view") || "Dashboard",
+  );
+  const [activeSettingsSection, setActiveSettingsSection] = useState("profile");
+  const [defaultView, setDefaultView] = useState(
+    () => localStorage.getItem("ancy-default-view") || "Dashboard",
+  );
   const [bankImportOpen, setBankImportOpen] = useState(false);
-  const [insightsData, setInsightsData] = useState(null);
+  const [insightsCache, setInsightsCache] = useState({});
   const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsLoadingMsg, setInsightsLoadingMsg] = useState(
+    "Analysing your spending…",
+  );
   const [insightsError, setInsightsError] = useState("");
+  const [insightsPeriod, setInsightsPeriod] = useState("Month");
+  const [windowExpenses, setWindowExpenses] = useState(null);
+  const [windowIncome, setWindowIncome] = useState(null);
+  const [windowLoading, setWindowLoading] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
   const [collapsedDates, setCollapsedDates] = useState(new Set());
   const [showOlderExpenses, setShowOlderExpenses] = useState(false);
@@ -1696,7 +2505,12 @@ export default function ExpenseTracker() {
         setUserDoc(doc);
         const onboarded = doc?.onboarding?.completed === true;
         const tipDismissed = doc?.onboarding?.aiTipDismissed === true;
-        console.log("[AITip Debug] onboarded:", onboarded, "tipDismissed:", tipDismissed);
+        console.log(
+          "[AITip Debug] onboarded:",
+          onboarded,
+          "tipDismissed:",
+          tipDismissed,
+        );
         if (!onboarded) {
           console.log("[AITip Debug] → Triggering onboarding");
           setShowOnboarding(true);
@@ -1757,7 +2571,9 @@ export default function ExpenseTracker() {
     if (!user || recurringExpenses.length === 0) return;
     const hasNoExpenses = expenses.length === 0;
     const alreadyApplied =
-      localStorage.getItem(`ancy-recurring-applied-${user.uid}:${currentPeriodKey}`) === "true";
+      localStorage.getItem(
+        `ancy-recurring-applied-${user.uid}:${currentPeriodKey}`,
+      ) === "true";
     if (hasNoExpenses && !alreadyApplied) {
       setRecurringBanner(true);
       const allSelected = {};
@@ -1794,10 +2610,11 @@ export default function ExpenseTracker() {
                 (sum, e) => sum + (Number(e.amount) || 0),
                 0,
               );
-              const income = (data.incomeSources || []).reduce(
-                (sum, s) => sum + (Number(s.amount) || 0),
-                0,
-              ) || currentIncome;
+              const income =
+                (data.incomeSources || []).reduce(
+                  (sum, s) => sum + (Number(s.amount) || 0),
+                  0,
+                ) || currentIncome;
               return { key, spending, income };
             } catch {
               return { key, spending: 0, income: currentIncome };
@@ -1805,18 +2622,21 @@ export default function ExpenseTracker() {
           }),
         );
         setTrendData(
-          [...results].reverse().map((r) => {
-            const [year, month] = r.key.split("-");
-            const d = new Date(Number(year), Number(month) - 1, 1);
-            return {
-              month: d.toLocaleDateString("en-IN", {
-                month: "short",
-                year: "numeric",
-              }),
-              spending: r.spending,
-              income: r.income,
-            };
-          }).filter((r) => r.spending > 0 || r.income > 0),
+          [...results]
+            .reverse()
+            .map((r) => {
+              const [year, month] = r.key.split("-");
+              const d = new Date(Number(year), Number(month) - 1, 1);
+              return {
+                month: d.toLocaleDateString("en-IN", {
+                  month: "short",
+                  year: "numeric",
+                }),
+                spending: r.spending,
+                income: r.income,
+              };
+            })
+            .filter((r) => r.spending > 0 || r.income > 0),
         );
       } catch {
         // silent
@@ -1825,6 +2645,29 @@ export default function ExpenseTracker() {
       }
     })();
   }, [user?.uid, totals.totalExp]);
+
+  // Reset window state when the main period changes; AI cache is kept per period key
+  useEffect(() => {
+    setInsightsError("");
+    setInsightsPeriod("Month");
+    setWindowExpenses(null);
+    setWindowIncome(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPeriodKey]);
+
+  // Auto-fetch when the tab opens, the period changes, or expenses first load
+  useEffect(() => {
+    if (
+      activeTab === "AI Insights" &&
+      !insightsCache[currentPeriodKey] &&
+      !insightsLoading &&
+      !insightsError &&
+      expenses.length > 0
+    ) {
+      fetchInsights();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, currentPeriodKey, expenses.length]);
 
   const [source, setSource] = useState({ name: "Salary", amount: "" });
   const [exp, setExp] = useState({
@@ -1845,30 +2688,17 @@ export default function ExpenseTracker() {
   const [newCat, setNewCat] = useState("");
   const [catError, setCatError] = useState("");
 
-  const t = {
-    bg: dark
-      ? "bg-[#12141f]"
-      : "bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100",
-    text: dark ? "text-gray-100" : "text-gray-800",
-    textMuted: dark ? "text-gray-400" : "text-gray-500",
-    textFaint: dark ? "text-gray-500" : "text-gray-400",
-    pillBg: dark
-      ? "bg-[#252a3d]/80 border-white/10"
-      : "bg-white/70 border-gray-200/60",
-    itemBg: dark ? "bg-white/5 border-white/5" : "bg-white/50 border-gray-100",
-    tableHead: dark
-      ? "text-gray-500 border-white/10"
-      : "text-gray-400 border-gray-200/50",
-  };
-
   if (loading) {
     return (
       <div
-        className={`min-h-screen w-full flex items-center justify-center ${dark ? "bg-[#12141f]" : "bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-100"}`}
+        className="min-h-screen w-full flex items-center justify-center"
+        style={{ background: "var(--page-bg, #06080F)" }}
       >
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 mx-auto mb-4" />
-          <p className={`text-sm ${t.textMuted}`}>Loading your dashboard...</p>
+          <p className="text-sm" style={{ color: "var(--tm)" }}>
+            Loading your dashboard...
+          </p>
         </div>
       </div>
     );
@@ -1899,32 +2729,128 @@ export default function ExpenseTracker() {
     });
   }
 
-  async function fetchInsights() {
-    if (expenses.length === 0) {
-      addToast("Add some expenses first to get insights!", "error");
+  async function fetchInsights(force = false) {
+    if (insightsLoading) return;
+    if (!force && insightsCache[currentPeriodKey]) return;
+    if (!isOnline) {
+      addToast("AI features need an internet connection. Try again when you're back online.", "info");
       return;
     }
-    setInsightsOpen(true);
+    if (expenses.length === 0) {
+      setInsightsError("no_data_for_period");
+      return;
+    }
     setInsightsLoading(true);
+    setInsightsLoadingMsg("Analysing your spending…");
     setInsightsError("");
-    setInsightsData(null);
+    const periodLabel =
+      monthOptions.find((m) => m.key === selectedMonth)?.label || "this month";
+    const slowTimer = setTimeout(
+      () => setInsightsLoadingMsg("Still working on it…"),
+      10000,
+    );
     try {
-      const result = await getSpendingInsightsFn({
-        expenses,
-        income: totals.income,
-        categories,
-        currency: selectedCurrency.code,
-        period:
-          monthOptions.find((m) => m.key === selectedMonth)?.label ||
-          "this month",
-      });
-      setInsightsData(result.data.insights);
+      const result = await Promise.race([
+        getSpendingInsightsFn({
+          expenses,
+          income: totals.income,
+          categories,
+          currency: selectedCurrency.code,
+          period: periodLabel,
+        }),
+        new Promise((_, reject) =>
+          setTimeout(
+            () =>
+              reject(Object.assign(new Error("TIMEOUT"), { code: "TIMEOUT" })),
+            30000,
+          ),
+        ),
+      ]);
+      setInsightsCache((prev) => ({
+        ...prev,
+        [currentPeriodKey]: result.data.insights,
+      }));
     } catch (err) {
-      setInsightsError(
-        err.message || "Could not load insights. Please try again.",
-      );
+      console.error("[Functions] fetchInsights failed:", err);
+      if (err.code === "TIMEOUT") {
+        setInsightsError(
+          "AI is unusually slow right now. Try again in a moment.",
+        );
+      } else {
+        setInsightsError(functionsErrorMsg(err));
+      }
     } finally {
+      clearTimeout(slowTimer);
       setInsightsLoading(false);
+    }
+  }
+
+  async function switchInsightsWindow(p) {
+    if (p === insightsPeriod || windowLoading) return;
+    setInsightsPeriod(p);
+    if (p === "Week" || p === "Month") {
+      setWindowExpenses(null);
+      setWindowIncome(null);
+      return;
+    }
+    setWindowLoading(true);
+    try {
+      const count = p === "Quarter" ? 3 : 12;
+      const monthKeys = Array.from({ length: count }, (_, i) => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - i);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      });
+      const allExp = [];
+      let allIncome = 0;
+      for (const key of monthKeys) {
+        const data = await loadMonth(user.uid, key);
+        allExp.push(...(data.expenses || []));
+        allIncome += (data.incomeSources || []).reduce(
+          (s, src) => s + Number(src.amount || 0),
+          0,
+        );
+      }
+      setWindowExpenses(allExp.length > 0 ? allExp : null);
+      setWindowIncome(allIncome > 0 ? allIncome : null);
+    } catch (err) {
+      console.error("[Firestore] switchInsightsWindow failed:", err);
+      addToast(firestoreErrorMsg(err), "error");
+      setWindowExpenses(null);
+      setWindowIncome(null);
+    } finally {
+      setWindowLoading(false);
+    }
+  }
+
+  async function resetAllData() {
+    if (!user) return;
+    setResetLoading(true);
+    try {
+      await wipeUserData(user.uid);
+      // Clear all period localStorage keys for this user
+      const keysToRemove = Object.keys(localStorage).filter((k) =>
+        k.startsWith(`expense-tracker:${user.uid}:`),
+      );
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+      // Reset in-memory state
+      setState({
+        incomeSources: [],
+        expenses: [],
+        catBudgets: {},
+        categories: [],
+        savingsGoals: [],
+      });
+      setInsightsCache({});
+      setResetDialogOpen(false);
+      setResetConfirmText("");
+      setActiveTab("Dashboard");
+      addToast("All data has been deleted.", "success");
+    } catch (err) {
+      addToast("Failed to reset data. Please try again.", "error");
+      console.error("resetAllData error:", err);
+    } finally {
+      setResetLoading(false);
     }
   }
 
@@ -1982,14 +2908,18 @@ export default function ExpenseTracker() {
       if (raw) {
         try {
           targetData = JSON.parse(raw);
-        } catch { /* ignore malformed cached data */ }
+        } catch {
+          /* ignore malformed cached data */
+        }
       }
       targetData = {
         ...targetData,
         expenses: [newExpense, ...(targetData.expenses || [])],
       };
       localStorage.setItem(localKey, JSON.stringify(targetData));
-      saveMonth(user.uid, targetMonthKey, targetData).catch(() => {});
+      saveMonth(user.uid, targetMonthKey, targetData).catch((err) =>
+        console.error("[Firestore] background saveMonth failed:", err),
+      );
 
       if (parsed.isRecurring) {
         setState((s) => {
@@ -2039,7 +2969,7 @@ export default function ExpenseTracker() {
       ],
     }));
     setSource({ name: "", amount: "" });
-    addToast("Income source added!", "success");
+    toastSaved("Income source added!");
   }
 
   function removeIncomeSource(id) {
@@ -2051,7 +2981,7 @@ export default function ExpenseTracker() {
           ...s,
           incomeSources: (s.incomeSources || []).filter((i) => i.id !== id),
         }));
-        addToast("Removed.", "success");
+        toastSaved("Removed.");
         closeConfirm();
       },
     });
@@ -2099,25 +3029,37 @@ export default function ExpenseTracker() {
       if (raw) {
         try {
           targetData = JSON.parse(raw);
-        } catch { /* ignore malformed cached data */ }
+        } catch {
+          /* ignore malformed cached data */
+        }
       }
       targetData = {
         ...targetData,
         expenses: [newExpenseObj, ...(targetData.expenses || [])],
       };
       localStorage.setItem(localKey, JSON.stringify(targetData));
-      saveMonth(user.uid, targetMonthKey, targetData).catch(() => {});
+      saveMonth(user.uid, targetMonthKey, targetData).catch((err) =>
+        console.error("[Firestore] background saveMonth failed:", err),
+      );
 
       // For custom-range views, append to display state if the date is in range
       if (currentPeriodKey.startsWith("custom-")) {
         const suffix = currentPeriodKey.slice(7);
         const rangeStart = suffix.slice(0, 10);
         const rangeEnd = suffix.slice(11);
-        if (newExpenseObj.date >= rangeStart && newExpenseObj.date <= rangeEnd) {
-          setState((s) => ({ ...s, expenses: [newExpenseObj, ...(s.expenses || [])] }));
+        if (
+          newExpenseObj.date >= rangeStart &&
+          newExpenseObj.date <= rangeEnd
+        ) {
+          setState((s) => ({
+            ...s,
+            expenses: [newExpenseObj, ...(s.expenses || [])],
+          }));
         }
       }
     }
+
+    markPending(newExpenseObj.id);
 
     // If recurring, save to recurring list (always in current period's state)
     if (exp.isRecurring) {
@@ -2135,14 +3077,14 @@ export default function ExpenseTracker() {
           ...(s.recurringExpenses || []),
         ],
       }));
-      addToast(
+      toastSaved(
         sameMonth
           ? `Expense added + saved as ${exp.frequency} recurring!`
           : `Expense added to ${targetMonthKey} + saved as ${exp.frequency} recurring!`,
         sameMonth ? "success" : "info",
       );
     } else {
-      addToast(
+      toastSaved(
         sameMonth ? "Expense added!" : `Expense added to ${targetMonthKey}`,
         sameMonth ? "success" : "info",
       );
@@ -2166,7 +3108,7 @@ export default function ExpenseTracker() {
           ...s,
           expenses: (s.expenses || []).filter((e) => e.id !== id),
         }));
-        addToast("Deleted.", "success");
+        toastSaved("Deleted.");
         closeConfirm();
       },
     });
@@ -2204,12 +3146,12 @@ export default function ExpenseTracker() {
       }
       return { ...s, expenses: updatedExpenses };
     });
+    markPending(updated.id);
     setEditingExpense(null);
-    addToast(
+    toastSaved(
       updated.isRecurring
         ? "Expense updated + saved as recurring!"
         : "Expense updated!",
-      "success",
     );
   }
   function addRecurringExpense(recurringItem) {
@@ -2238,7 +3180,7 @@ export default function ExpenseTracker() {
             (r) => r.id !== id,
           ),
         }));
-        addToast("Recurring expense removed.", "success");
+        toastSaved("Recurring expense removed.");
         closeConfirm();
       },
     });
@@ -2296,7 +3238,9 @@ export default function ExpenseTracker() {
       if (raw) {
         try {
           targetData = JSON.parse(raw);
-        } catch { /* ignore malformed cached data */ }
+        } catch {
+          /* ignore malformed cached data */
+        }
       }
       const existingExp = targetData.expenses || [];
       const newItems = toAdd.filter(
@@ -2323,7 +3267,9 @@ export default function ExpenseTracker() {
         ],
       };
       localStorage.setItem(localKey, JSON.stringify(targetData));
-      saveMonth(user.uid, targetMonthKey, targetData).catch(() => {});
+      saveMonth(user.uid, targetMonthKey, targetData).catch((err) =>
+        console.error("[Firestore] background saveMonth failed:", err),
+      );
       const msg =
         skipped > 0
           ? `${newItems.length} added to ${targetMonthKey}, ${skipped} already existed`
@@ -2333,9 +3279,11 @@ export default function ExpenseTracker() {
 
     setRecurringReviewOpen(false);
     setRecurringBanner(false);
-    localStorage.setItem(`ancy-recurring-applied-${user.uid}:${currentPeriodKey}`, "true");
+    localStorage.setItem(
+      `ancy-recurring-applied-${user.uid}:${currentPeriodKey}`,
+      "true",
+    );
   }
-
 
   function setBudget(category, value) {
     const amt = Number(value);
@@ -2403,7 +3351,7 @@ export default function ExpenseTracker() {
     }));
     setNewCat("");
     setCatError("");
-    addToast(`"${name}" added!`, "success");
+    toastSaved(`"${name}" added!`);
   }
 
   function deleteCategory(name) {
@@ -2425,7 +3373,7 @@ export default function ExpenseTracker() {
         setExp((prev) =>
           prev.category === name ? { ...prev, category: "Other" } : prev,
         );
-        addToast(`"${name}" deleted.`, "success");
+        toastSaved(`"${name}" deleted.`);
         closeConfirm();
       },
     });
@@ -2468,7 +3416,8 @@ export default function ExpenseTracker() {
       targetDate: "",
       priority: "medium",
     });
-    addToast("Goal added!", "success");
+    markPending(goal.id);
+    toastSaved("Goal added!");
   }
 
   function updateSavingsGoal(id, updates) {
@@ -2489,7 +3438,7 @@ export default function ExpenseTracker() {
           ...s,
           savingsGoals: (s.savingsGoals || []).filter((g) => g.id !== id),
         }));
-        addToast("Goal deleted.", "success");
+        toastSaved("Goal deleted.");
         closeConfirm();
       },
     });
@@ -2506,7 +3455,7 @@ export default function ExpenseTracker() {
             goal.targetAmount,
           ),
         });
-        addToast(`Added!`, "success");
+        toastSaved("Added!");
         closeAmountInput();
       },
     });
@@ -2520,7 +3469,7 @@ export default function ExpenseTracker() {
         updateSavingsGoal(goal.id, {
           currentAmount: Math.max(goal.currentAmount - amount, 0),
         });
-        addToast(`Withdrawn.`, "success");
+        toastSaved("Withdrawn.");
         closeAmountInput();
       },
     });
@@ -2531,11 +3480,35 @@ export default function ExpenseTracker() {
     const bud = Number(catBudgets[c]) || 0;
     return bud > 0 && spent > bud;
   });
-
   return (
     <ThemeContext.Provider value={{ dark, toggle: toggleTheme }}>
+      {!isOnline && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 9999,
+            background: "rgba(251,191,36,0.12)",
+            borderBottom: "1px solid rgba(251,191,36,0.3)",
+            color: "rgb(251,191,36)",
+            fontSize: 12,
+            padding: "6px 16px",
+            textAlign: "center",
+            fontWeight: 500,
+          }}
+        >
+          You're offline. Changes will sync when you reconnect.
+        </div>
+      )}
       <div
-        className={`min-h-screen w-full transition-colors duration-300 ${t.bg} p-4 md:p-6`}
+        className="min-h-screen w-full flex bg-slate-50 dark:bg-[#06080F]"
+        style={{
+          color: "var(--tx)",
+          transition: "background 0.3s ease, color 0.25s ease",
+          paddingTop: isOnline ? 0 : 31,
+        }}
       >
         {showOnboarding && (
           <OnboardingFlow
@@ -2560,7 +3533,10 @@ export default function ExpenseTracker() {
                 setState((s) => {
                   const next = { ...s };
 
-                  if (onboardingData.incomeAmount && Number(onboardingData.incomeAmount) > 0) {
+                  if (
+                    onboardingData.incomeAmount &&
+                    Number(onboardingData.incomeAmount) > 0
+                  ) {
                     next.incomeSources = [
                       ...(s.incomeSources || []),
                       {
@@ -2573,13 +3549,21 @@ export default function ExpenseTracker() {
 
                   if ((onboardingData.selectedCategories || []).length > 0) {
                     next.categories = Array.from(
-                      new Set([...(s.categories || []), ...onboardingData.selectedCategories])
+                      new Set([
+                        ...(s.categories || []),
+                        ...onboardingData.selectedCategories,
+                      ]),
                     );
                   }
 
-                  if (onboardingData.savingsGoalName && onboardingData.savingsGoalTarget) {
+                  if (
+                    onboardingData.savingsGoalName &&
+                    onboardingData.savingsGoalTarget
+                  ) {
                     const defaultTargetDate = new Date();
-                    defaultTargetDate.setMonth(defaultTargetDate.getMonth() + 3);
+                    defaultTargetDate.setMonth(
+                      defaultTargetDate.getMonth() + 3,
+                    );
                     next.savingsGoals = [
                       ...(s.savingsGoals || []),
                       {
@@ -2587,7 +3571,9 @@ export default function ExpenseTracker() {
                         name: onboardingData.savingsGoalName,
                         targetAmount: Number(onboardingData.savingsGoalTarget),
                         currentAmount: 0,
-                        targetDate: defaultTargetDate.toISOString().split("T")[0],
+                        targetDate: defaultTargetDate
+                          .toISOString()
+                          .split("T")[0],
                         priority: "medium",
                         createdAt: new Date().toISOString(),
                       },
@@ -2625,9 +3611,49 @@ export default function ExpenseTracker() {
         )}
 
         {dark && (
-          <div className="fixed inset-0 pointer-events-none overflow-hidden">
-            <div className="absolute top-0 right-0 w-[500px] h-[300px] bg-indigo-600/10 rounded-full blur-3xl translate-x-1/2 -translate-y-1/2" />
-            <div className="absolute bottom-0 left-0 w-[400px] h-[300px] bg-violet-600/8 rounded-full blur-3xl -translate-x-1/2 translate-y-1/2" />
+          <div
+            className="fixed inset-0 pointer-events-none overflow-hidden"
+            style={{ zIndex: 0 }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: "-15%",
+                right: "-10%",
+                width: 600,
+                height: 600,
+                borderRadius: "50%",
+                background:
+                  "radial-gradient(circle, rgba(129,140,248,0.18) 0%, transparent 65%)",
+                filter: "blur(60px)",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                bottom: "-10%",
+                left: "-10%",
+                width: 500,
+                height: 500,
+                borderRadius: "50%",
+                background:
+                  "radial-gradient(circle, rgba(167,139,250,0.12) 0%, transparent 65%)",
+                filter: "blur(60px)",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                top: "40%",
+                left: "30%",
+                width: 400,
+                height: 400,
+                borderRadius: "50%",
+                background:
+                  "radial-gradient(circle, rgba(34,211,238,0.06) 0%, transparent 65%)",
+                filter: "blur(80px)",
+              }}
+            />
           </div>
         )}
 
@@ -2646,14 +3672,6 @@ export default function ExpenseTracker() {
           currency={selectedCurrency}
           onConfirm={amountDialog.onConfirm}
           onCancel={closeAmountInput}
-        />
-        <InsightsModal
-          open={insightsOpen}
-          onClose={() => setInsightsOpen(false)}
-          insights={insightsData}
-          loading={insightsLoading}
-          error={insightsError}
-          dark={dark}
         />
         <EditExpenseModal
           open={!!editingExpense}
@@ -2685,39 +3703,152 @@ export default function ExpenseTracker() {
           currentPeriodKey={currentPeriodKey}
           setState={setState}
           addToast={addToast}
+          isOnline={isOnline}
         />
 
-        <div className="relative mx-auto max-w-7xl">
-          {/* HEADER */}
-          <motion.header
-            {...stagger(0)}
-            className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+        {/* ── SIDEBAR ───────────────────────────────────────── */}
+        <AppSidebar
+          user={user}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+        />
+
+        {/* ── MOBILE BOTTOM TAB BAR ─────────────────────────── */}
+        <MobileTabBar activeTab={activeTab} onTabChange={setActiveTab} />
+
+        {/* ── MOBILE FAB ────────────────────────────────────── */}
+        <motion.button
+          className="md:hidden fixed z-50 flex items-center justify-center rounded-full shadow-2xl"
+          style={{
+            bottom: "calc(env(safe-area-inset-bottom, 0px) + 72px)",
+            right: 16,
+            width: 52,
+            height: 52,
+            background: "linear-gradient(135deg, #818CF8 0%, #22D3EE 100%)",
+            boxShadow: "0 8px 24px -6px rgba(129,140,248,0.7)",
+          }}
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.93 }}
+          onClick={() => setActiveTab("Expenses")}
+          aria-label="Add expense"
+        >
+          <Plus className="h-6 w-6 text-white" strokeWidth={2.5} />
+        </motion.button>
+
+        {/* ── MAIN CONTENT ──────────────────────────────────── */}
+        <div className="flex-1 min-h-screen flex flex-col lg:ml-56">
+          {/* Mobile top bar — only visible below lg */}
+          <div
+            className="lg:hidden sticky top-0 z-30 bg-white dark:bg-[#141828] border-b border-slate-200 dark:border-white/[0.06]"
+            style={{
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+            }}
           >
-            {/* Recurring expenses banner */}
+            {/* Row 1: Logo + Avatar */}
+            <div className="flex items-center justify-between px-4 h-14">
+              <div className="flex items-center gap-2.5">
+                <img
+                  src="/brand/ancy-icon-512.png"
+                  alt="Ancy"
+                  className="w-7 h-7 rounded-xl"
+                />
+                <span
+                  className="font-bold text-sm"
+                  style={{ color: "var(--tx)" }}
+                >
+                  Ancy
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <ThemeToggle />
+                <MobileAvatarMenu user={user} onTabChange={setActiveTab} />
+              </div>
+            </div>
+            {/* Row 2: Controls */}
+            <div className="flex items-center gap-2 px-4 pb-3 overflow-x-auto scrollbar-none">
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="h-8 px-2.5 rounded-xl border text-xs shrink-0 min-w-[9rem]">
+                  <SelectValue placeholder="Period" />
+                </SelectTrigger>
+                <SelectContent className="rounded-2xl">
+                  {monthOptions.map((m) => (
+                    <SelectItem key={m.key} value={m.key}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="shrink-0">
+                <CurrencySelector />
+              </div>
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setActiveTab("AI Insights")}
+                className="h-8 px-3 rounded-xl text-xs flex items-center gap-1.5 text-white font-medium shrink-0"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #A78BFA 0%, #818CF8 100%)",
+                }}
+              >
+                <Sparkles className="h-3 w-3" />
+                AI
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setBankImportOpen(true)}
+                className="h-8 px-3 rounded-xl text-xs flex items-center gap-1.5 shrink-0"
+                style={{
+                  background: "var(--c5)",
+                  border: "1px solid var(--c10)",
+                  color: "var(--tm)",
+                }}
+              >
+                <Upload className="h-3 w-3" />
+                Import
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={exportCSV}
+                className="h-8 px-3 rounded-xl text-xs flex items-center gap-1.5 shrink-0"
+                style={{
+                  background: "var(--c5)",
+                  border: "1px solid var(--c10)",
+                  color: "var(--tm)",
+                }}
+              >
+                <Download className="h-3 w-3" />
+                Export
+              </motion.button>
+            </div>
+          </div>
+
+          {/* Scrollable main area */}
+          <div className="flex-1 p-4 lg:px-6 lg:pt-7 w-full pb-24 md:pb-8">
+            {/* Recurring banner */}
             <AnimatePresence>
               {recurringBanner && (
                 <motion.div
-                  initial={{ opacity: 0, y: -10 }}
+                  initial={{ opacity: 0, y: -8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className={`mb-4 p-4 rounded-2xl border flex items-center justify-between gap-4 ${
-                    dark
-                      ? "bg-indigo-500/10 border-indigo-500/20"
-                      : "bg-indigo-50 border-indigo-200"
-                  }`}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="mb-5 p-4 rounded-2xl flex items-center justify-between gap-4"
+                  style={{
+                    background: "rgba(129,140,248,0.10)",
+                    border: "1px solid rgba(129,140,248,0.25)",
+                  }}
                 >
                   <div className="flex items-center gap-3">
                     <span className="text-xl">🔄</span>
                     <div>
                       <p
-                        className={`text-sm font-semibold ${dark ? "text-indigo-300" : "text-indigo-700"}`}
+                        className="text-sm font-semibold"
+                        style={{ color: "#818CF8" }}
                       >
                         You have {recurringExpenses.length} recurring expense
                         {recurringExpenses.length > 1 ? "s" : ""}
                       </p>
-                      <p
-                        className={`text-xs ${dark ? "text-indigo-400" : "text-indigo-500"}`}
-                      >
+                      <p className="text-xs" style={{ color: "var(--tm)" }}>
                         {fmt(
                           recurringExpenses.reduce((s, r) => s + r.amount, 0),
                           selectedCurrency.code,
@@ -2729,16 +3860,21 @@ export default function ExpenseTracker() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <button
-                      onClick={() => {
-                        setRecurringReviewOpen(true);
+                      onClick={() => setRecurringReviewOpen(true)}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold hover:opacity-90"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, #818CF8 0%, #22D3EE 100%)",
+                        color: "#07090F",
+                        border: "none",
                       }}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 text-white text-xs font-medium hover:opacity-90 shadow-md"
                     >
                       Review & Add
                     </button>
                     <button
                       onClick={() => setRecurringBanner(false)}
-                      className={`p-1.5 rounded-xl transition-colors ${dark ? "text-gray-400 hover:bg-white/5" : "text-gray-400 hover:bg-gray-100"}`}
+                      className="p-1.5 rounded-xl transition-colors"
+                      style={{ color: "var(--tm)" }}
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -2746,382 +3882,1971 @@ export default function ExpenseTracker() {
                 </motion.div>
               )}
             </AnimatePresence>
-            <div className="flex items-center gap-3">
-              <img src="/brand/ancy-icon-512.png" alt="Ancy" className="w-10 h-10 rounded-2xl" />
-              <div>
-                <h1 className={`text-xl font-bold leading-tight ${t.text}`}>
-                  Ancy
-                </h1>
-                <p className={`text-xs ${t.textFaint}`}>
-                  Your smart way to manage your money.
-                </p>
-              </div>
-              <span className="ml-1 rounded-full bg-gradient-to-r from-indigo-500 to-violet-600 px-2 py-0.5 text-[10px] font-medium text-white">
-                PWA
-              </span>
-            </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex flex-col gap-1.5">
-                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                  <SelectTrigger
-                    className={`h-9 px-4 rounded-full border text-sm min-w-[10rem] shadow-sm ${t.pillBg} ${t.text}`}
-                  >
-                    <SelectValue placeholder="Select period" />
-                  </SelectTrigger>
-                  <SelectContent
-                    className={`rounded-2xl ${dark ? "bg-[#1e2235] border-white/10" : ""}`}
-                  >
-                    {monthOptions.map((m) => (
-                      <SelectItem key={m.key} value={m.key}>
-                        {m.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedMonth === "custom" && (
-                  <div className="flex items-center gap-2">
-                    <div>
-                      <p className={`text-[10px] mb-0.5 ${t.textFaint}`}>
-                        From
-                      </p>
-                      <input
-                        type="date"
-                        value={customDateRange.start}
-                        onChange={(e) =>
-                          setCustomDateRange((p) => ({
-                            ...p,
-                            start: e.target.value,
-                          }))
-                        }
-                        className={`h-8 px-2 rounded-xl border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-32 ${dark ? "bg-[#252a3d] border-white/10 text-gray-200" : "bg-white/70 border-gray-200 text-gray-700"}`}
-                      />
-                    </div>
-                    <div>
-                      <p className={`text-[10px] mb-0.5 ${t.textFaint}`}>To</p>
-                      <input
-                        type="date"
-                        value={customDateRange.end}
-                        onChange={(e) =>
-                          setCustomDateRange((p) => ({
-                            ...p,
-                            end: e.target.value,
-                          }))
-                        }
-                        className={`h-8 px-2 rounded-xl border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 w-32 ${dark ? "bg-[#252a3d] border-white/10 text-gray-200" : "bg-white/70 border-gray-200 text-gray-700"}`}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <CurrencySelector />
-              <ThemeToggle />
-
-              <motion.button
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={fetchInsights}
-                className="h-9 px-4 rounded-full text-sm flex items-center gap-1.5 shadow-lg shadow-violet-500/25 transition-all bg-gradient-to-r from-violet-500 to-purple-600 text-white hover:shadow-violet-500/40 hover:scale-105"
-              >
-                <Sparkles className="h-4 w-4" />
-                <span className="hidden sm:inline">AI Insights</span>
-              </motion.button>
-
-              <motion.button
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => setBankImportOpen(true)}
-                className={`h-9 px-4 rounded-full border text-sm flex items-center gap-1.5 shadow-sm transition-colors ${t.pillBg} ${t.textMuted} hover:opacity-80`}
-              >
-                <Upload className="h-4 w-4" />
-                <span className="hidden sm:inline">Import</span>
-              </motion.button>
-
-              <motion.button
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={exportCSV}
-                className={`h-9 px-4 rounded-full border text-sm flex items-center gap-1.5 shadow-sm transition-colors ${t.pillBg} ${t.textMuted} hover:opacity-80`}
-              >
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Export</span>
-              </motion.button>
-
-              <div className="h-9">
-                <AuthButtons />
-              </div>
-            </div>
-          </motion.header>
-
-          {/* TWO-COLUMN LAYOUT */}
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
-            {/* LEFT COLUMN */}
-            <div className="space-y-6">
-              {/* Summary cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  {
-                    label: "Income",
-                    value: fmt(
-                      totals.income,
-                      selectedCurrency.code,
-                      selectedCurrency.locale,
-                    ),
-                    icon: Wallet,
-                    light: "from-indigo-50 to-indigo-100/60",
-                    dark: "from-indigo-900/40 to-indigo-800/20",
-                    iconColor: "text-indigo-400",
-                  },
-                  {
-                    label: "Expenses",
-                    value: fmt(
-                      totals.totalExp,
-                      selectedCurrency.code,
-                      selectedCurrency.locale,
-                    ),
-                    icon: TrendingUp,
-                    light: "from-rose-50 to-rose-100/60",
-                    dark: "from-rose-900/40 to-rose-800/20",
-                    iconColor: "text-rose-400",
-                  },
-                  {
-                    label: "Remaining",
-                    value: fmt(
-                      totals.remaining,
-                      selectedCurrency.code,
-                      selectedCurrency.locale,
-                    ),
-                    icon: Wallet2,
-                    light: "from-cyan-50 to-cyan-100/60",
-                    dark: "from-cyan-900/40 to-cyan-800/20",
-                    iconColor: "text-cyan-400",
-                  },
-                  {
-                    label: "Budget Used",
-                    value: `${totals.util}%`,
-                    icon: Target,
-                    light: "from-amber-50 to-amber-100/60",
-                    dark: "from-amber-900/40 to-amber-800/20",
-                    iconColor: "text-amber-400",
-                  },
-                ].map((card, i) => (
-                  <motion.div key={card.label} {...stagger(i + 1)}>
-                    <div
-                      className={`bg-gradient-to-br rounded-2xl border shadow-md p-4 ${dark ? `${card.dark} border-white/5` : `${card.light} border-white/60`}`}
+            {/* ── GREETING + ACTION BAR ─────────────────────── */}
+            {(() => {
+              const hour = new Date().getHours();
+              const greeting =
+                hour < 12
+                  ? "Good morning"
+                  : hour < 17
+                    ? "Good afternoon"
+                    : "Good evening";
+              const name =
+                user?.displayName?.split(" ")[0] ||
+                user?.email?.split("@")[0] ||
+                "there";
+              return (
+                <motion.div
+                  {...stagger(0)}
+                  className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+                >
+                  <div>
+                    <p
+                      className="text-[11px] font-semibold tracking-[0.12em] uppercase"
+                      style={{ color: "var(--tf)" }}
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <p
-                          className={`text-xs uppercase tracking-wide font-medium ${t.textFaint}`}
-                        >
-                          {card.label}
-                        </p>
-                        <card.icon className={`h-4 w-4 ${card.iconColor}`} />
-                      </div>
-                      <p className={`text-xl font-bold ${t.text}`}>
-                        {card.value}
-                      </p>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-
-              {/* Progress bar */}
-              <motion.div {...stagger(5)}>
-                <GlassCard className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`text-xs ${t.textMuted}`}>
-                      Overall budget usage
-                    </span>
-                    <span className="text-xs font-semibold text-indigo-400">
-                      {totals.util}%
-                    </span>
-                  </div>
-                  <div
-                    className={`h-2.5 w-full rounded-full overflow-hidden ${dark ? "bg-white/10" : "bg-gray-100"}`}
-                  >
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.min(totals.util, 100)}%` }}
-                      transition={{ duration: 0.8, ease: "easeOut" }}
-                      className={`h-2.5 rounded-full ${totals.util > 100 ? "bg-red-400" : totals.util > 80 ? "bg-orange-400" : "bg-gradient-to-r from-indigo-500 to-cyan-500"}`}
-                    />
-                  </div>
-                  <p className={`mt-1.5 text-xs ${t.textFaint}`}>
-                    Total expenses / total income
-                  </p>
-                </GlassCard>
-              </motion.div>
-
-              {/* Income Sources */}
-              <motion.div {...stagger(6)}>
-                <GlassCard className="p-5">
-                  <SectionTitle icon={Wallet2}>Income Sources</SectionTitle>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-                    <div className="sm:col-span-2 space-y-1">
-                      <label className={`text-xs ${t.textFaint}`}>
-                        Source name
-                      </label>
-                      <ThemedInput
-                        placeholder="e.g., Salary, Freelance"
-                        value={source.name}
-                        error={!!sourceErrors.name}
-                        onChange={(e) => {
-                          setSource({ ...source, name: e.target.value });
-                          if (sourceErrors.name)
-                            setSourceErrors((p) => ({ ...p, name: "" }));
-                        }}
-                      />
-                      <FieldError message={sourceErrors.name} />
-                    </div>
-                    <div className="space-y-1">
-                      <label className={`text-xs ${t.textFaint}`}>
-                        Amount ({selectedCurrency.code})
-                      </label>
-                      <ThemedInput
-                        inputMode="numeric"
-                        placeholder="e.g., 75000"
-                        value={source.amount}
-                        error={!!sourceErrors.amount}
-                        onChange={(e) => {
-                          setSource({
-                            ...source,
-                            amount: e.target.value.replace(/[^0-9]/g, ""),
-                          });
-                          if (sourceErrors.amount)
-                            setSourceErrors((p) => ({ ...p, amount: "" }));
-                        }}
-                      />
-                      <FieldError message={sourceErrors.amount} />
-                    </div>
-                  </div>
-                  <GradBtn onClick={addIncomeSource} className="w-full mb-4">
-                    + Add Source
-                  </GradBtn>
-                  {incomeSources.length === 0 ? (
-                    <p className={`text-xs text-center py-3 ${t.textFaint}`}>
-                      No income sources yet.
+                      {greeting}, {name}
                     </p>
-                  ) : (
-                    <ul className="space-y-1.5">
-                      <AnimatePresence>
-                        {incomeSources.map((i) => (
-                          <motion.li
-                            key={i.id}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 10 }}
-                            className={`flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm ${t.itemBg}`}
+                    <h1
+                      className="text-[24px] font-bold mt-0.5 tracking-tight leading-tight"
+                      style={{ color: "var(--tx)" }}
+                    >
+                      Here&apos;s where your money stands.
+                    </h1>
+                  </div>
+                  <div className="hidden md:flex flex-wrap items-center gap-2">
+                    {/* Period selector */}
+                    <div className="flex flex-col gap-1.5">
+                      <Select
+                        value={selectedMonth}
+                        onValueChange={setSelectedMonth}
+                      >
+                        <SelectTrigger className="h-9 px-3 rounded-xl border text-sm min-w-[9rem]">
+                          <SelectValue placeholder="Select period" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-2xl">
+                          {monthOptions.map((m) => (
+                            <SelectItem key={m.key} value={m.key}>
+                              {m.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedMonth === "custom" && (
+                        <div className="flex items-center gap-2">
+                          <div>
+                            <p
+                              className="text-[10px] mb-0.5"
+                              style={{ color: "var(--tf)" }}
+                            >
+                              From
+                            </p>
+                            <input
+                              type="date"
+                              value={customDateRange.start}
+                              onChange={(e) =>
+                                setCustomDateRange((p) => ({
+                                  ...p,
+                                  start: e.target.value,
+                                }))
+                              }
+                              className="h-8 px-2 rounded-xl text-xs w-32"
+                              style={{
+                                background: "var(--c5)",
+                                border: "1px solid var(--c10)",
+                                color: "var(--tx)",
+                                outline: "none",
+                                colorScheme: dark ? "dark" : "light",
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <p
+                              className="text-[10px] mb-0.5"
+                              style={{ color: "var(--tf)" }}
+                            >
+                              To
+                            </p>
+                            <input
+                              type="date"
+                              value={customDateRange.end}
+                              onChange={(e) =>
+                                setCustomDateRange((p) => ({
+                                  ...p,
+                                  end: e.target.value,
+                                }))
+                              }
+                              className="h-8 px-2 rounded-xl text-xs w-32"
+                              style={{
+                                background: "var(--c5)",
+                                border: "1px solid var(--c10)",
+                                color: "var(--tx)",
+                                outline: "none",
+                                colorScheme: dark ? "dark" : "light",
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <CurrencySelector />
+
+                    <motion.button
+                      whileHover={{ scale: 1.04 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => setActiveTab("AI Insights")}
+                      className="h-9 px-4 rounded-xl text-sm flex items-center gap-1.5 text-white font-medium"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, #A78BFA 0%, #818CF8 100%)",
+                        boxShadow: "0 6px 20px -6px rgba(167,139,250,0.55)",
+                      }}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">AI Insights</span>
+                    </motion.button>
+
+                    <motion.button
+                      whileHover={{ scale: 1.04 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => setBankImportOpen(true)}
+                      className="h-9 px-3 rounded-xl text-sm flex items-center gap-1.5 transition-opacity hover:opacity-80"
+                      style={{
+                        background: "var(--c5)",
+                        border: "1px solid var(--c10)",
+                        color: "var(--tm)",
+                      }}
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Import</span>
+                    </motion.button>
+
+                    <motion.button
+                      whileHover={{ scale: 1.04 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={exportCSV}
+                      className="h-9 px-3 rounded-xl text-sm flex items-center gap-1.5 transition-opacity hover:opacity-80"
+                      style={{
+                        background: "var(--c5)",
+                        border: "1px solid var(--c10)",
+                        color: "var(--tm)",
+                      }}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Export</span>
+                    </motion.button>
+                  </div>
+                </motion.div>
+              );
+            })()}
+
+            {/* ── TAB VIEWS ─────────────────────────────────── */}
+
+            {/* ── DASHBOARD ── */}
+            {activeTab === "Dashboard" && (
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
+                {/* Left */}
+                <div className="space-y-6">
+                  {/* Stat cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      {
+                        label: "Income",
+                        value: fmt(
+                          totals.income,
+                          selectedCurrency.code,
+                          selectedCurrency.locale,
+                        ),
+                        icon: Wallet,
+                        glow: "rgba(129,140,248,0.12)",
+                        iconColor: "#818CF8",
+                      },
+                      {
+                        label: "Expenses",
+                        value: fmt(
+                          totals.totalExp,
+                          selectedCurrency.code,
+                          selectedCurrency.locale,
+                        ),
+                        icon: TrendingUp,
+                        glow: "rgba(251,113,133,0.12)",
+                        iconColor: "#FB7185",
+                      },
+                      {
+                        label: "Remaining",
+                        value: fmt(
+                          totals.remaining,
+                          selectedCurrency.code,
+                          selectedCurrency.locale,
+                        ),
+                        icon: Wallet2,
+                        glow:
+                          totals.remaining < 0
+                            ? "rgba(251,113,133,0.12)"
+                            : "rgba(52,211,153,0.12)",
+                        iconColor: totals.remaining < 0 ? "#FB7185" : "#34D399",
+                      },
+                      {
+                        label: "Saved",
+                        value: fmt(
+                          totals.saved,
+                          selectedCurrency.code,
+                          selectedCurrency.locale,
+                        ),
+                        icon: PiggyBank,
+                        glow: "rgba(251,191,36,0.12)",
+                        iconColor: "#FBBF24",
+                      },
+                    ].map((card, i) => (
+                      <motion.div key={card.label} {...stagger(i + 1)}>
+                        <div
+                          className="rounded-2xl p-4 bg-white dark:bg-white/[0.035] border border-slate-200 dark:border-white/10 shadow-sm dark:shadow-none"
+                          style={{
+                            backdropFilter: "blur(20px) saturate(160%)",
+                            WebkitBackdropFilter: "blur(20px) saturate(160%)",
+                            boxShadow: dark
+                              ? `0 0 40px -20px ${card.glow}, inset 0 1px 0 rgba(255,255,255,0.06)`
+                              : undefined,
+                          }}
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <p
+                              className="text-[9px] uppercase tracking-[0.14em] font-semibold"
+                              style={{ color: "var(--tf)" }}
+                            >
+                              {card.label}
+                            </p>
+                            <div
+                              className="w-7 h-7 rounded-xl flex items-center justify-center"
+                              style={{
+                                background: `${card.glow}`,
+                                border: `1px solid ${card.iconColor}25`,
+                              }}
+                            >
+                              <card.icon
+                                className="h-3.5 w-3.5"
+                                style={{ color: card.iconColor }}
+                              />
+                            </div>
+                          </div>
+                          <p
+                            className="text-[22px] font-bold leading-none tracking-tight"
+                            style={{ color: "var(--tx)" }}
                           >
-                            <span className={`font-medium truncate ${t.text}`}>
-                              {i.name}
-                            </span>
-                            <div className="flex items-center gap-3 shrink-0">
-                              <span className={`font-semibold ${t.text}`}>
+                            {card.value}
+                          </p>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  {/* Budget usage bar */}
+                  <motion.div {...stagger(5)}>
+                    <GlassCard className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span
+                          className="text-xs"
+                          style={{ color: "var(--tm)" }}
+                        >
+                          Overall budget usage
+                        </span>
+                        <span
+                          className="text-xs font-semibold"
+                          style={{ color: "#818CF8" }}
+                        >
+                          {totals.util}%
+                        </span>
+                      </div>
+                      <div
+                        className="h-2.5 w-full rounded-full overflow-hidden"
+                        style={{ background: "var(--bd)" }}
+                      >
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(totals.util, 100)}%` }}
+                          transition={{ duration: 0.8, ease: "easeOut" }}
+                          className="h-2.5 rounded-full"
+                          style={{
+                            background:
+                              totals.util > 100
+                                ? "#FB7185"
+                                : totals.util > 80
+                                  ? "#FB923C"
+                                  : "linear-gradient(90deg, #818CF8, #22D3EE)",
+                          }}
+                        />
+                      </div>
+                      <p
+                        className="mt-1.5 text-xs"
+                        style={{ color: "var(--tf)" }}
+                      >
+                        Total expenses / total income
+                      </p>
+                    </GlassCard>
+                  </motion.div>
+
+                  {/* Income vs Spending area chart */}
+                  <motion.div {...stagger(7)}>
+                    <GlassCard className="p-5">
+                      <SectionTitle icon={TrendingUp}>
+                        Income vs Spending
+                      </SectionTitle>
+                      <p
+                        className="text-xs -mt-2 mb-4"
+                        style={{ color: "var(--tf)" }}
+                      >
+                        6-month overview
+                      </p>
+                      {trendLoading ? (
+                        <div className="flex items-center justify-center h-[200px]">
+                          <Loader2
+                            className="h-5 w-5 animate-spin"
+                            style={{ color: "#818CF8" }}
+                          />
+                        </div>
+                      ) : trendData.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-[200px] gap-2">
+                          <TrendingUp
+                            className="h-8 w-8 opacity-20"
+                            style={{ color: "#818CF8" }}
+                          />
+                          <p className="text-xs" style={{ color: "var(--tf)" }}>
+                            No trend data yet
+                          </p>
+                        </div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height={200}>
+                          <AreaChart
+                            data={trendData}
+                            margin={{ top: 4, right: 0, left: 0, bottom: 0 }}
+                          >
+                            <defs>
+                              <linearGradient
+                                id="gradIncome"
+                                x1="0"
+                                y1="0"
+                                x2="0"
+                                y2="1"
+                              >
+                                <stop
+                                  offset="5%"
+                                  stopColor="#34d399"
+                                  stopOpacity={0.25}
+                                />
+                                <stop
+                                  offset="95%"
+                                  stopColor="#34d399"
+                                  stopOpacity={0}
+                                />
+                              </linearGradient>
+                              <linearGradient
+                                id="gradSpending"
+                                x1="0"
+                                y1="0"
+                                x2="0"
+                                y2="1"
+                              >
+                                <stop
+                                  offset="5%"
+                                  stopColor="#f87171"
+                                  stopOpacity={0.25}
+                                />
+                                <stop
+                                  offset="95%"
+                                  stopColor="#f87171"
+                                  stopOpacity={0}
+                                />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid
+                              strokeDasharray="3 3"
+                              stroke="var(--c6)"
+                              vertical={false}
+                            />
+                            <XAxis
+                              dataKey="month"
+                              tick={{ fill: "var(--tm)", fontSize: 11 }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <YAxis hide />
+                            <Tooltip
+                              formatter={(v, name) => [
+                                fmt(
+                                  Number(v),
+                                  selectedCurrency.code,
+                                  selectedCurrency.locale,
+                                ),
+                                name === "spending" ? "Spending" : "Income",
+                              ]}
+                              labelFormatter={(l) => l}
+                              labelStyle={{ color: "#a5b4fc", fontWeight: 600 }}
+                              contentStyle={{
+                                borderRadius: 12,
+                                border: "1px solid var(--bd)",
+                                background: "var(--sheet-bg)",
+                                color: "var(--tx)",
+                              }}
+                            />
+                            <Legend
+                              verticalAlign="top"
+                              align="right"
+                              wrapperStyle={{ fontSize: 11, paddingBottom: 8 }}
+                              formatter={(v) =>
+                                v === "spending" ? "Spending" : "Income"
+                              }
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="income"
+                              stroke="#34d399"
+                              strokeWidth={2}
+                              fill="url(#gradIncome)"
+                              dot={false}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="spending"
+                              stroke="#f87171"
+                              strokeWidth={2}
+                              fill="url(#gradSpending)"
+                              dot={false}
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      )}
+                    </GlassCard>
+                  </motion.div>
+
+                  {/* Recent Activity */}
+                  <motion.div {...stagger(8)}>
+                    <GlassCard className="p-5">
+                      <SectionTitle icon={Zap}>Recent Activity</SectionTitle>
+                      {(() => {
+                        const cutoff = new Date();
+                        cutoff.setDate(cutoff.getDate() - 7);
+                        const recent = [...expenses]
+                          .filter((e) => new Date(e.date) >= cutoff)
+                          .sort((a, b) => new Date(b.date) - new Date(a.date))
+                          .slice(0, 10);
+                        if (recent.length === 0)
+                          return (
+                            <div className="flex flex-col items-center justify-center py-8 gap-2">
+                              <Zap
+                                className="h-7 w-7 opacity-20"
+                                style={{ color: "#818CF8" }}
+                              />
+                              <p
+                                className="text-xs"
+                                style={{ color: "var(--tf)" }}
+                              >
+                                No activity in the last 7 days
+                              </p>
+                            </div>
+                          );
+                        return (
+                          <div
+                            className="divide-y"
+                            style={{ borderColor: "var(--bd-soft)" }}
+                          >
+                            {recent.map((e) => {
+                              const cat = e.category || "Other";
+                              const color = colorFor(cat);
+                              return (
+                                <div
+                                  key={e.id}
+                                  className="flex items-center gap-3 py-3 first:pt-1 last:pb-0"
+                                >
+                                  <div
+                                    className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold"
+                                    style={{
+                                      background: `${color}20`,
+                                      border: `1px solid ${color}35`,
+                                      color,
+                                    }}
+                                  >
+                                    {cat[0].toUpperCase()}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p
+                                      className="text-sm font-medium truncate"
+                                      style={{ color: "var(--tx)" }}
+                                    >
+                                      {e.description || cat}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      <span
+                                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                                        style={{
+                                          background: `${color}18`,
+                                          color,
+                                          border: `1px solid ${color}30`,
+                                        }}
+                                      >
+                                        {cat}
+                                      </span>
+                                      <span
+                                        className="text-[11px]"
+                                        style={{ color: "var(--tf)" }}
+                                      >
+                                        {formatDateHeader(new Date(e.date))}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <span
+                                    className="text-sm font-bold tabular-nums shrink-0"
+                                    style={{ color: "#FB7185" }}
+                                  >
+                                    -
+                                    {fmt(
+                                      e.amount,
+                                      selectedCurrency.code,
+                                      selectedCurrency.locale,
+                                    )}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </GlassCard>
+                  </motion.div>
+                </div>
+
+                {/* Right — donut + savings preview */}
+                <div className="space-y-6">
+                  <motion.div {...stagger(2)}>
+                    <GlassCard className="p-5">
+                      <SectionTitle icon={TrendingUp}>By Category</SectionTitle>
+                      {totals.byCat.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-10">
+                          <div className="text-4xl mb-2">📊</div>
+                          <p className="text-xs" style={{ color: "var(--tf)" }}>
+                            Add expenses to see breakdown.
+                          </p>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="h-48 relative">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={totals.byCat}
+                                  dataKey="value"
+                                  nameKey="name"
+                                  innerRadius={55}
+                                  outerRadius={80}
+                                  paddingAngle={2}
+                                >
+                                  {totals.byCat.map((entry) => (
+                                    <Cell
+                                      key={entry.name}
+                                      fill={colorFor(entry.name)}
+                                    />
+                                  ))}
+                                </Pie>
+                                <Tooltip
+                                  formatter={(v) =>
+                                    fmt(
+                                      Number(v),
+                                      selectedCurrency.code,
+                                      selectedCurrency.locale,
+                                    )
+                                  }
+                                  contentStyle={{
+                                    borderRadius: 12,
+                                    border: "1px solid var(--c10)",
+                                    background: "var(--sheet-bg)",
+                                    color: "var(--tx)",
+                                  }}
+                                />
+                              </PieChart>
+                            </ResponsiveContainer>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                              <span
+                                className="text-[9px] uppercase tracking-[0.14em] font-semibold"
+                                style={{ color: "var(--tf)" }}
+                              >
+                                Total
+                              </span>
+                              <span
+                                className="text-base font-bold leading-tight mt-0.5"
+                                style={{ color: "var(--tx)" }}
+                              >
                                 {fmt(
-                                  i.amount,
+                                  totals.totalExp,
                                   selectedCurrency.code,
                                   selectedCurrency.locale,
                                 )}
                               </span>
-                              <button
-                                onClick={() => removeIncomeSource(i.id)}
-                                className={`transition-colors ${dark ? "text-gray-600 hover:text-red-400" : "text-gray-300 hover:text-red-400"}`}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
                             </div>
-                          </motion.li>
-                        ))}
-                      </AnimatePresence>
-                    </ul>
-                  )}
-                </GlassCard>
-              </motion.div>
+                          </div>
+                          <div className="mt-3 space-y-2">
+                            {totals.byCat.map((entry) => {
+                              const pct =
+                                totals.totalExp > 0
+                                  ? (
+                                      (entry.value / totals.totalExp) *
+                                      100
+                                    ).toFixed(1)
+                                  : "0.0";
+                              return (
+                                <div
+                                  key={entry.name}
+                                  className="flex items-center justify-between text-xs"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span
+                                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                                      style={{
+                                        background: colorFor(entry.name),
+                                      }}
+                                    />
+                                    <span
+                                      className="truncate"
+                                      style={{ color: "var(--tm)" }}
+                                    >
+                                      {entry.name}
+                                    </span>
+                                  </div>
+                                  <div
+                                    className="flex items-center gap-2 shrink-0 ml-2"
+                                    style={{ color: "var(--tm)" }}
+                                  >
+                                    <span>
+                                      {fmt(
+                                        entry.value,
+                                        selectedCurrency.code,
+                                        selectedCurrency.locale,
+                                      )}
+                                    </span>
+                                    <span
+                                      className="w-10 text-right font-semibold"
+                                      style={{ color: "var(--tx)" }}
+                                    >
+                                      {pct}%
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </GlassCard>
+                  </motion.div>
 
-              {/* Savings Goals */}
-              <motion.div {...stagger(7)}>
-                <GlassCard className="p-5">
-                  <SectionTitle icon={PiggyBank} iconColor="text-green-400">
-                    Savings Goals
-                  </SectionTitle>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
-                    {[
-                      {
-                        label: "Goal Name",
-                        key: "name",
-                        placeholder: "e.g., Emergency Fund",
-                        type: "text",
-                      },
-                      {
-                        label: `Target (${selectedCurrency.code})`,
-                        key: "targetAmount",
-                        placeholder: "100000",
-                        type: "numeric",
-                      },
-                      {
-                        label: `Current (${selectedCurrency.code})`,
-                        key: "currentAmount",
-                        placeholder: "25000",
-                        type: "numeric",
-                      },
-                      {
-                        label: "Target Date",
-                        key: "targetDate",
-                        placeholder: "",
-                        type: "date",
-                      },
-                    ].map(({ label, key, placeholder, type }) => (
-                      <div key={key} className="space-y-1">
-                        <label className={`text-xs ${t.textFaint}`}>
-                          {label}
-                        </label>
-                        <ThemedInput
-                          type={type === "date" ? "date" : "text"}
-                          inputMode={type === "numeric" ? "numeric" : undefined}
-                          placeholder={placeholder}
-                          value={newGoal[key]}
-                          error={!!goalErrors[key]}
-                          onChange={(e) => {
-                            setNewGoal({
-                              ...newGoal,
-                              [key]:
-                                type === "numeric"
-                                  ? e.target.value.replace(/[^0-9]/g, "")
-                                  : e.target.value,
-                            });
-                            if (goalErrors[key])
-                              setGoalErrors((p) => ({ ...p, [key]: "" }));
+                  {/* Savings Goals preview */}
+                  {savingsGoals.length > 0 && (
+                    <motion.div {...stagger(3)}>
+                      <GlassCard className="p-5">
+                        <div className="flex items-center justify-between mb-4">
+                          <SectionTitle icon={PiggyBank}>
+                            Savings Goals
+                          </SectionTitle>
+                          <button
+                            onClick={() => setActiveTab("Savings")}
+                            className="text-[11px] font-semibold hover:opacity-75 transition-opacity"
+                            style={{ color: "#818CF8" }}
+                          >
+                            View all →
+                          </button>
+                        </div>
+                        <div className="space-y-4">
+                          {savingsGoals.slice(0, 3).map((goal) => {
+                            const pct =
+                              Math.min(
+                                100,
+                                Math.round(
+                                  (goal.currentAmount / goal.targetAmount) *
+                                    100,
+                                ),
+                              ) || 0;
+                            const done = pct >= 100;
+                            return (
+                              <div key={goal.id} className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span
+                                    className="text-xs font-medium truncate max-w-[65%]"
+                                    style={{ color: "var(--tx)" }}
+                                  >
+                                    {goal.name}
+                                  </span>
+                                  <span
+                                    className="text-xs font-bold tabular-nums"
+                                    style={{
+                                      color: done ? "#34D399" : "#818CF8",
+                                    }}
+                                  >
+                                    {pct}%
+                                  </span>
+                                </div>
+                                <div
+                                  className="h-1.5 w-full rounded-full overflow-hidden"
+                                  style={{ background: "var(--bd)" }}
+                                >
+                                  <motion.div
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${pct}%` }}
+                                    transition={{
+                                      duration: 0.7,
+                                      ease: "easeOut",
+                                    }}
+                                    className="h-1.5 rounded-full"
+                                    style={{
+                                      background: done
+                                        ? "#34D399"
+                                        : "linear-gradient(90deg, #818CF8, #22D3EE)",
+                                    }}
+                                  />
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span
+                                    className="text-[10px]"
+                                    style={{ color: "var(--tf)" }}
+                                  >
+                                    {fmt(
+                                      goal.currentAmount,
+                                      selectedCurrency.code,
+                                      selectedCurrency.locale,
+                                    )}{" "}
+                                    saved
+                                  </span>
+                                  <span
+                                    className="text-[10px]"
+                                    style={{ color: "var(--tf)" }}
+                                  >
+                                    {fmt(
+                                      goal.targetAmount,
+                                      selectedCurrency.code,
+                                      selectedCurrency.locale,
+                                    )}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </GlassCard>
+                    </motion.div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── EXPENSES ── */}
+            {activeTab === "Expenses" && (
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+                <div className="space-y-6">
+                  {/* Add Expense */}
+                  <motion.div {...stagger(1)}>
+                    <GlassCard className="p-5">
+                      <SectionTitle icon={Plus}>Add Expense</SectionTitle>
+                      <div className="mb-5">
+                        <div className="relative">
+                          {showAITip && (
+                            <AITooltip
+                              dark={dark}
+                              onDismiss={async () => {
+                                if (!showAITip) return;
+                                try {
+                                  await saveUserDoc(user.uid, {
+                                    onboarding: { aiTipDismissed: true },
+                                  });
+                                  setShowAITip(false);
+                                } catch (err) {
+                                  console.error(
+                                    "Failed to dismiss AI tip:",
+                                    err,
+                                  );
+                                  setShowAITip(false);
+                                }
+                              }}
+                            />
+                          )}
+                          <QuickAddBar
+                            categories={categories}
+                            selectedCurrency={selectedCurrency}
+                            onExpenseAdd={handleQuickAddExpense}
+                            addToast={addToast}
+                            isOnline={isOnline}
+                            showAITip={showAITip}
+                            onAITipDismiss={async () => {
+                              if (!showAITip) return;
+                              try {
+                                await saveUserDoc(user.uid, {
+                                  onboarding: { aiTipDismissed: true },
+                                });
+                                setShowAITip(false);
+                              } catch (err) {
+                                console.error("Failed to dismiss AI tip:", err);
+                                setShowAITip(false);
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div
+                        className="flex items-center gap-3 mb-4"
+                        style={{ color: "var(--tf)" }}
+                      >
+                        <div className="flex-1 h-px bg-current opacity-30" />
+                        <span className="text-xs">or add manually</span>
+                        <div className="flex-1 h-px bg-current opacity-30" />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-6 gap-3 mb-3 sm:items-start">
+                        <div className="sm:col-span-2 space-y-1">
+                          <label
+                            className="text-xs"
+                            style={{ color: "var(--tf)" }}
+                          >
+                            Date
+                          </label>
+                          <ThemedInput
+                            type="date"
+                            value={exp.date}
+                            error={!!expErrors.date}
+                            onChange={(e) => {
+                              setExp({ ...exp, date: e.target.value });
+                              if (expErrors.date)
+                                setExpErrors((p) => ({ ...p, date: "" }));
+                            }}
+                          />
+                          <FieldError message={expErrors.date} />
+                        </div>
+                        <div className="sm:col-span-2 space-y-1">
+                          <label
+                            className="text-xs"
+                            style={{ color: "var(--tf)" }}
+                          >
+                            Category
+                          </label>
+                          <Select
+                            value={exp.category}
+                            onValueChange={(v) => {
+                              setExp({ ...exp, category: v });
+                              if (expErrors.category)
+                                setExpErrors((p) => ({ ...p, category: "" }));
+                            }}
+                          >
+                            <SelectTrigger
+                              className={`h-[42px] rounded-xl text-sm ${expErrors.category ? "border-red-400/50" : ""}`}
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-2xl">
+                              {categories.map((c) => (
+                                <SelectItem key={c} value={c}>
+                                  {c}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FieldError message={expErrors.category} />
+                        </div>
+                        <div className="sm:col-span-2 space-y-1">
+                          <label
+                            className="text-xs"
+                            style={{ color: "var(--tf)" }}
+                          >
+                            Amount ({selectedCurrency.code})
+                          </label>
+                          <ThemedInput
+                            inputMode="decimal"
+                            placeholder="e.g., 1200"
+                            value={exp.amount}
+                            error={!!expErrors.amount}
+                            onChange={(e) => {
+                              setExp({
+                                ...exp,
+                                amount: e.target.value.replace(/[^0-9.]/g, ""),
+                              });
+                              if (expErrors.amount)
+                                setExpErrors((p) => ({ ...p, amount: "" }));
+                            }}
+                          />
+                          <FieldError message={expErrors.amount} />
+                        </div>
+                        <div className="sm:col-span-5 space-y-1">
+                          <label
+                            className="text-xs"
+                            style={{ color: "var(--tf)" }}
+                          >
+                            Description (optional)
+                          </label>
+                          <ThemedInput
+                            placeholder="e.g., BMTC pass, groceries at DMart"
+                            value={exp.description}
+                            onChange={(e) =>
+                              setExp({ ...exp, description: e.target.value })
+                            }
+                          />
+                        </div>
+                        <div className="sm:col-span-6 flex items-center gap-4 flex-wrap">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <div
+                              onClick={() =>
+                                setExp((p) => ({
+                                  ...p,
+                                  isRecurring: !p.isRecurring,
+                                }))
+                              }
+                              className="relative w-9 h-5 rounded-full transition-colors"
+                              style={{
+                                background: exp.isRecurring
+                                  ? "#818CF8"
+                                  : "var(--c15)",
+                              }}
+                            >
+                              <div
+                                className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${exp.isRecurring ? "translate-x-4" : ""}`}
+                              />
+                            </div>
+                            <span
+                              className="text-xs"
+                              style={{ color: "var(--tf)" }}
+                            >
+                              Recurring expense
+                            </span>
+                          </label>
+                          {exp.isRecurring && (
+                            <motion.div
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              className="flex items-center gap-2"
+                            >
+                              <span
+                                className="text-xs"
+                                style={{ color: "var(--tf)" }}
+                              >
+                                Frequency:
+                              </span>
+                              <select
+                                value={exp.frequency}
+                                onChange={(e) =>
+                                  setExp((p) => ({
+                                    ...p,
+                                    frequency: e.target.value,
+                                  }))
+                                }
+                                className="h-7 px-2 rounded-lg text-xs"
+                                style={{
+                                  background: "var(--c5)",
+                                  border: "1px solid var(--c10)",
+                                  color: "var(--tx)",
+                                  outline: "none",
+                                }}
+                              >
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                                <option value="yearly">Yearly</option>
+                              </select>
+                            </motion.div>
+                          )}
+                        </div>
+                        <div className="sm:col-span-1 flex items-end">
+                          <GradBtn onClick={addExpense} className="w-full">
+                            + Add
+                          </GradBtn>
+                        </div>
+                      </div>
+
+                      {/* Mobile list */}
+                      <div className="mt-4 md:hidden space-y-2">
+                        {expenses.length === 0 ? (
+                          <p
+                            className="text-center text-xs py-4"
+                            style={{ color: "var(--tf)" }}
+                          >
+                            No expenses yet.
+                          </p>
+                        ) : (
+                          (() => {
+                            const grouped = groupExpensesByDate(expenses);
+                            const visibleGroups = showOlderExpenses
+                              ? grouped
+                              : grouped.slice(0, 5);
+                            return (
+                              <>
+                                {visibleGroups.map((group) => {
+                                  const isCollapsed = collapsedDates.has(
+                                    group.dateKey,
+                                  );
+                                  return (
+                                    <React.Fragment key={group.dateKey}>
+                                      <div
+                                        className="flex items-center gap-2 px-1 py-1.5 cursor-pointer"
+                                        onClick={() => {
+                                          const next = new Set(collapsedDates);
+                                          if (isCollapsed)
+                                            next.delete(group.dateKey);
+                                          else next.add(group.dateKey);
+                                          setCollapsedDates(next);
+                                        }}
+                                      >
+                                        <ChevronDown
+                                          className={`h-3.5 w-3.5 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+                                          style={{ color: "var(--tm)" }}
+                                        />
+                                        <span
+                                          className="text-xs font-semibold"
+                                          style={{ color: "var(--tx)" }}
+                                        >
+                                          {formatDateHeader(group.date)}
+                                        </span>
+                                        <span
+                                          className="text-xs ml-auto font-semibold"
+                                          style={{ color: "var(--tx)" }}
+                                        >
+                                          {fmt(
+                                            group.total,
+                                            selectedCurrency.code,
+                                            selectedCurrency.locale,
+                                          )}
+                                        </span>
+                                      </div>
+                                      {!isCollapsed &&
+                                        group.items.map((e) => (
+                                          <motion.div
+                                            key={e.id}
+                                            layout
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            className="flex items-center justify-between px-3 py-2.5 rounded-xl text-sm group"
+                                            style={{
+                                              background: "var(--c4)",
+                                              border: "1px solid var(--c6)",
+                                            }}
+                                          >
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                              <span
+                                                className="h-2 w-2 rounded-full shrink-0"
+                                                style={{
+                                                  background: colorFor(
+                                                    e.category,
+                                                  ),
+                                                }}
+                                              />
+                                              <div className="min-w-0">
+                                                <p
+                                                  className="font-medium truncate"
+                                                  style={{ color: "var(--tx)" }}
+                                                >
+                                                  {e.description || e.category}
+                                                </p>
+                                                <p
+                                                  className="text-[11px]"
+                                                  style={{ color: "var(--tf)" }}
+                                                >
+                                                  {e.category} ·{" "}
+                                                  {new Date(
+                                                    e.date,
+                                                  ).toLocaleDateString()}
+                                                </p>
+                                              </div>
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                              {pendingIds.has(e.id) && (
+                                                <CloudUpload
+                                                  className="h-3 w-3 shrink-0"
+                                                  style={{ color: "var(--tf)" }}
+                                                  title="Syncing..."
+                                                />
+                                              )}
+                                              <span
+                                                className="font-semibold"
+                                                style={{ color: "var(--tx)" }}
+                                              >
+                                                {fmt(
+                                                  e.amount,
+                                                  selectedCurrency.code,
+                                                  selectedCurrency.locale,
+                                                )}
+                                              </span>
+                                              <button
+                                                onClick={() =>
+                                                  setEditingExpense(e)
+                                                }
+                                                className="transition-colors hover:text-[#818CF8] opacity-0 group-hover:opacity-100"
+                                                style={{ color: "var(--tf)" }}
+                                              >
+                                                <Pencil className="h-3.5 w-3.5" />
+                                              </button>
+                                              <button
+                                                onClick={() =>
+                                                  removeExpense(e.id)
+                                                }
+                                                className="transition-colors hover:text-[#FB7185] opacity-0 group-hover:opacity-100"
+                                                style={{ color: "var(--tf)" }}
+                                              >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                              </button>
+                                            </div>
+                                          </motion.div>
+                                        ))}
+                                    </React.Fragment>
+                                  );
+                                })}
+                                {grouped.length > 5 && (
+                                  <button
+                                    onClick={() =>
+                                      setShowOlderExpenses(!showOlderExpenses)
+                                    }
+                                    className="w-full py-2 text-xs font-medium transition-colors"
+                                    style={{ color: "var(--tm)" }}
+                                  >
+                                    {showOlderExpenses
+                                      ? "Show less"
+                                      : `Show ${grouped.length - 5} older ${grouped.length - 5 === 1 ? "day" : "days"}`}
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()
+                        )}
+                      </div>
+
+                      {/* Desktop table */}
+                      <div className="mt-4 hidden md:block overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr
+                              className="text-left text-xs border-b"
+                              style={{
+                                color: "var(--tf)",
+                                borderColor: "var(--c6)",
+                              }}
+                            >
+                              <th className="pb-2 pl-2 font-medium">Date</th>
+                              <th className="pb-2 font-medium">Category</th>
+                              <th className="pb-2 font-medium">Description</th>
+                              <th className="pb-2 text-right font-medium">
+                                Amount
+                              </th>
+                              <th className="pb-2 text-right pr-2 font-medium">
+                                Action
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {expenses.length === 0 ? (
+                              <tr>
+                                <td
+                                  colSpan={5}
+                                  className="py-8 text-center text-xs"
+                                  style={{ color: "var(--tf)" }}
+                                >
+                                  No expenses yet. Add your first one above.
+                                </td>
+                              </tr>
+                            ) : (
+                              (() => {
+                                const grouped = groupExpensesByDate(expenses);
+                                const visibleGroups = showOlderExpenses
+                                  ? grouped
+                                  : grouped.slice(0, 5);
+                                return (
+                                  <>
+                                    {visibleGroups.map((group) => {
+                                      const isCollapsed = collapsedDates.has(
+                                        group.dateKey,
+                                      );
+                                      return (
+                                        <React.Fragment key={group.dateKey}>
+                                          <tr
+                                            className="cursor-pointer transition-colors hover:bg-white/10"
+                                            style={{ background: "var(--c4)" }}
+                                            onClick={() => {
+                                              const next = new Set(
+                                                collapsedDates,
+                                              );
+                                              if (isCollapsed)
+                                                next.delete(group.dateKey);
+                                              else next.add(group.dateKey);
+                                              setCollapsedDates(next);
+                                            }}
+                                          >
+                                            <td
+                                              colSpan={3}
+                                              className="py-2 pl-2"
+                                            >
+                                              <div className="flex items-center gap-2">
+                                                <ChevronDown
+                                                  className={`h-4 w-4 transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+                                                  style={{ color: "var(--tm)" }}
+                                                />
+                                                <span
+                                                  className="text-sm font-semibold"
+                                                  style={{ color: "var(--tx)" }}
+                                                >
+                                                  {formatDateHeader(group.date)}
+                                                </span>
+                                                <span
+                                                  className="text-xs"
+                                                  style={{ color: "var(--tf)" }}
+                                                >
+                                                  ({group.items.length}{" "}
+                                                  {group.items.length === 1
+                                                    ? "expense"
+                                                    : "expenses"}
+                                                  )
+                                                </span>
+                                              </div>
+                                            </td>
+                                            <td
+                                              className="py-2 text-right font-semibold"
+                                              style={{ color: "var(--tx)" }}
+                                            >
+                                              {fmt(
+                                                group.total,
+                                                selectedCurrency.code,
+                                                selectedCurrency.locale,
+                                              )}
+                                            </td>
+                                            <td className="py-2 pr-2"></td>
+                                          </tr>
+                                          {!isCollapsed &&
+                                            group.items.map((e) => (
+                                              <motion.tr
+                                                key={e.id}
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                exit={{ opacity: 0 }}
+                                                className="border-b transition-colors group hover:bg-white/5"
+                                                style={{
+                                                  borderColor: "var(--c5)",
+                                                }}
+                                              >
+                                                <td
+                                                  className="py-3 pl-2"
+                                                  style={{ color: "var(--tm)" }}
+                                                >
+                                                  {new Date(
+                                                    e.date,
+                                                  ).toLocaleDateString()}
+                                                </td>
+                                                <td className="py-3">
+                                                  <span className="flex items-center gap-1.5">
+                                                    <span
+                                                      className="h-2 w-2 rounded-full shrink-0"
+                                                      style={{
+                                                        background: colorFor(
+                                                          e.category,
+                                                        ),
+                                                      }}
+                                                    />
+                                                    <span
+                                                      style={{
+                                                        color: "var(--tx)",
+                                                      }}
+                                                    >
+                                                      {e.category}
+                                                    </span>
+                                                  </span>
+                                                </td>
+                                                <td
+                                                  className="py-3"
+                                                  style={{ color: "var(--tm)" }}
+                                                >
+                                                  {e.description}
+                                                </td>
+                                                <td
+                                                  className="py-3 text-right font-semibold"
+                                                  style={{ color: "var(--tx)" }}
+                                                >
+                                                  <span className="flex items-center justify-end gap-1.5">
+                                                    {pendingIds.has(e.id) && (
+                                                      <CloudUpload
+                                                        className="h-3 w-3"
+                                                        style={{ color: "var(--tf)" }}
+                                                        title="Syncing..."
+                                                      />
+                                                    )}
+                                                    {fmt(
+                                                      e.amount,
+                                                      selectedCurrency.code,
+                                                      selectedCurrency.locale,
+                                                    )}
+                                                  </span>
+                                                </td>
+                                                <td className="py-3 text-right pr-2">
+                                                  <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                      onClick={() =>
+                                                        setEditingExpense(e)
+                                                      }
+                                                      className="transition-colors hover:text-[#818CF8]"
+                                                      style={{
+                                                        color: "var(--tf)",
+                                                      }}
+                                                    >
+                                                      <Pencil className="h-3.5 w-3.5" />
+                                                    </button>
+                                                    <button
+                                                      onClick={() =>
+                                                        removeExpense(e.id)
+                                                      }
+                                                      className="transition-colors hover:text-[#FB7185]"
+                                                      style={{
+                                                        color: "var(--tf)",
+                                                      }}
+                                                    >
+                                                      <Trash2 className="h-3.5 w-3.5" />
+                                                    </button>
+                                                  </div>
+                                                </td>
+                                              </motion.tr>
+                                            ))}
+                                        </React.Fragment>
+                                      );
+                                    })}
+                                    {grouped.length > 5 && (
+                                      <tr>
+                                        <td
+                                          colSpan={5}
+                                          className="py-2 text-center"
+                                        >
+                                          <button
+                                            onClick={() =>
+                                              setShowOlderExpenses(
+                                                !showOlderExpenses,
+                                              )
+                                            }
+                                            className="text-xs font-medium transition-colors"
+                                            style={{ color: "var(--tm)" }}
+                                          >
+                                            {showOlderExpenses
+                                              ? "Show less"
+                                              : `Show ${grouped.length - 5} older ${grouped.length - 5 === 1 ? "day" : "days"}`}
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </>
+                                );
+                              })()
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </GlassCard>
+                  </motion.div>
+                </div>
+
+                {/* Right sidebar for Expenses tab */}
+                <div className="space-y-6">
+                  {/* Recurring Expenses */}
+                  {recurringExpenses.length > 0 && (
+                    <motion.div {...stagger(1)}>
+                      <GlassCard className="p-5">
+                        <div className="flex items-center gap-2 mb-4">
+                          <span className="text-base">🔄</span>
+                          <h2
+                            className="font-semibold text-sm"
+                            style={{ color: "var(--tx)" }}
+                          >
+                            Recurring
+                          </h2>
+                        </div>
+                        <div className="space-y-2">
+                          {recurringExpenses.map((r) => (
+                            <div
+                              key={r.id}
+                              className="flex items-center justify-between p-3 rounded-xl"
+                              style={{
+                                background: "var(--c4)",
+                                border: "1px solid var(--c6)",
+                              }}
+                            >
+                              <div className="min-w-0">
+                                <p
+                                  className="text-sm font-medium truncate"
+                                  style={{ color: "var(--tx)" }}
+                                >
+                                  {r.description || r.category}
+                                </p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span
+                                    className="text-xs"
+                                    style={{ color: "var(--tm)" }}
+                                  >
+                                    {r.category}
+                                  </span>
+                                  <span
+                                    className="text-[10px] px-1.5 py-0.5 rounded-full"
+                                    style={{
+                                      background: "var(--bd)",
+                                      color: "var(--tm)",
+                                    }}
+                                  >
+                                    {r.frequency}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 shrink-0 ml-3">
+                                <span
+                                  className="text-sm font-semibold"
+                                  style={{ color: "#818CF8" }}
+                                >
+                                  {fmt(
+                                    r.amount,
+                                    selectedCurrency.code,
+                                    selectedCurrency.locale,
+                                  )}
+                                </span>
+                                <button
+                                  onClick={() => removeRecurringExpense(r.id)}
+                                  className="transition-colors hover:text-[#FB7185]"
+                                  style={{ color: "var(--tf)" }}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </GlassCard>
+                    </motion.div>
+                  )}
+
+                  {/* Income context */}
+                  <motion.div {...stagger(2)}>
+                    <GlassCard className="p-5">
+                      <div className="flex items-center justify-between mb-1">
+                        <span
+                          className="text-xs font-medium"
+                          style={{ color: "var(--tm)" }}
+                        >
+                          Total Income
+                        </span>
+                        <span
+                          className="text-sm font-bold"
+                          style={{ color: "#34D399" }}
+                        >
+                          {fmt(
+                            totals.income,
+                            selectedCurrency.code,
+                            selectedCurrency.locale,
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span
+                          className="text-xs font-medium"
+                          style={{ color: "var(--tm)" }}
+                        >
+                          Total Expenses
+                        </span>
+                        <span
+                          className="text-sm font-bold"
+                          style={{ color: "#FB7185" }}
+                        >
+                          {fmt(
+                            totals.totalExp,
+                            selectedCurrency.code,
+                            selectedCurrency.locale,
+                          )}
+                        </span>
+                      </div>
+                      <div
+                        className="mt-3 h-2 w-full rounded-full overflow-hidden"
+                        style={{ background: "var(--bd)" }}
+                      >
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(totals.util, 100)}%` }}
+                          transition={{ duration: 0.8 }}
+                          className="h-2 rounded-full"
+                          style={{
+                            background:
+                              totals.util > 100
+                                ? "#FB7185"
+                                : "linear-gradient(90deg, #818CF8, #22D3EE)",
                           }}
                         />
-                        <FieldError message={goalErrors[key]} />
                       </div>
-                    ))}
-                    <div className="space-y-1">
-                      <label className={`text-xs ${t.textFaint}`}>
-                        Priority
-                      </label>
-                      <Select
-                        value={newGoal.priority}
-                        onValueChange={(v) =>
-                          setNewGoal({ ...newGoal, priority: v })
-                        }
+                      <p
+                        className="mt-1 text-[10px]"
+                        style={{ color: "var(--tf)" }}
                       >
-                        <SelectTrigger
-                          className={`h-[42px] rounded-xl text-sm border ${dark ? "bg-[#252a3d] border-white/10 text-gray-200" : "bg-white/60 border-gray-200"}`}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent
-                          className={`rounded-2xl ${dark ? "bg-[#1e2235] border-white/10" : ""}`}
-                        >
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
-                        </SelectContent>
-                      </Select>
+                        {totals.util}% of income spent
+                      </p>
+                    </GlassCard>
+                  </motion.div>
+                </div>
+              </div>
+            )}
+
+            {/* ── BUDGETS ── */}
+            {activeTab === "Budgets" && (
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+                <motion.div {...stagger(1)}>
+                  <GlassCard className="p-5">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Target
+                        className="h-4 w-4"
+                        style={{ color: "#818CF8" }}
+                      />
+                      <h2
+                        className="font-semibold text-sm"
+                        style={{ color: "var(--tx)" }}
+                      >
+                        Category Budgets
+                      </h2>
+                      {anyOverBudget && (
+                        <span className="ml-auto text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+                          Over budget
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-end">
+                    <p className="text-xs mb-4" style={{ color: "var(--tf)" }}>
+                      Set spending limits per category
+                    </p>
+                    <div className="space-y-5">
+                      {categories.map((c) => {
+                        const spent =
+                          totals.byCat.find((x) => x.name === c)?.value || 0;
+                        const bud = Number(catBudgets[c]) || 0;
+                        const diff = bud - spent;
+                        const isOver = bud > 0 && diff < 0;
+                        const pct =
+                          bud > 0 ? Math.min((spent / bud) * 100, 100) : 0;
+                        return (
+                          <div key={c} className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className="h-2 w-2 rounded-full"
+                                  style={{ background: colorFor(c) }}
+                                />
+                                <span
+                                  className="text-xs font-medium"
+                                  style={{ color: "var(--tx)" }}
+                                >
+                                  {c}
+                                </span>
+                              </div>
+                              {isOver ? (
+                                <span className="text-[10px] font-medium text-red-400">
+                                  {fmt(
+                                    Math.abs(diff),
+                                    selectedCurrency.code,
+                                    selectedCurrency.locale,
+                                  )}{" "}
+                                  over
+                                </span>
+                              ) : bud > 0 ? (
+                                <span
+                                  className="text-[10px]"
+                                  style={{ color: "var(--tf)" }}
+                                >
+                                  {fmt(
+                                    diff,
+                                    selectedCurrency.code,
+                                    selectedCurrency.locale,
+                                  )}{" "}
+                                  left
+                                </span>
+                              ) : null}
+                            </div>
+                            <input
+                              inputMode="numeric"
+                              placeholder={`Budget (${selectedCurrency.code})`}
+                              value={catBudgets[c] ?? ""}
+                              className="w-full px-3 py-2 rounded-xl text-xs transition-all"
+                              style={{
+                                background: "var(--c4)",
+                                border: `1px solid ${isOver ? "rgba(251,113,133,0.4)" : "var(--c10)"}`,
+                                color: "var(--tx)",
+                                outline: "none",
+                                fontFamily: "inherit",
+                              }}
+                              onChange={(e) =>
+                                setBudget(
+                                  c,
+                                  e.target.value.replace(/[^0-9]/g, ""),
+                                )
+                              }
+                            />
+                            {bud > 0 && (
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="flex-1 h-1.5 rounded-full overflow-hidden"
+                                  style={{ background: "var(--bd)" }}
+                                >
+                                  <motion.div
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${pct}%` }}
+                                    transition={{ duration: 0.6 }}
+                                    className="h-1.5 rounded-full"
+                                    style={{
+                                      background: isOver
+                                        ? "#FB7185"
+                                        : pct > 80
+                                          ? "#FB923C"
+                                          : "linear-gradient(90deg, #818CF8, #22D3EE)",
+                                    }}
+                                  />
+                                </div>
+                                <span
+                                  className="text-[10px] shrink-0"
+                                  style={{ color: "var(--tf)" }}
+                                >
+                                  {fmt(
+                                    spent,
+                                    selectedCurrency.code,
+                                    selectedCurrency.locale,
+                                  )}{" "}
+                                  spent
+                                </span>
+                              </div>
+                            )}
+                            {bud === 0 && (
+                              <p
+                                className="text-[10px]"
+                                style={{ color: "var(--tf)" }}
+                              >
+                                no budget set
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </GlassCard>
+                </motion.div>
+
+                {/* Right: Goals overview */}
+                <div className="space-y-6">
+                  {savingsGoals.length > 0 && (
+                    <motion.div {...stagger(2)}>
+                      <GlassCard className="p-5">
+                        <SectionTitle
+                          icon={PiggyBank}
+                          iconColor="text-green-400"
+                        >
+                          Goals Overview
+                        </SectionTitle>
+                        <div className="space-y-3">
+                          {savingsGoals.map((goal) => {
+                            const pct =
+                              (goal.currentAmount / goal.targetAmount) * 100;
+                            return (
+                              <div key={goal.id}>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span
+                                    className="text-xs font-medium truncate"
+                                    style={{ color: "var(--tx)" }}
+                                  >
+                                    {goal.name}
+                                  </span>
+                                  <span
+                                    className="text-xs font-semibold shrink-0 ml-2"
+                                    style={{ color: "#818CF8" }}
+                                  >
+                                    {pct.toFixed(0)}%
+                                  </span>
+                                </div>
+                                <div
+                                  className="h-1.5 w-full rounded-full overflow-hidden"
+                                  style={{ background: "var(--bd)" }}
+                                >
+                                  <motion.div
+                                    initial={{ width: 0 }}
+                                    animate={{
+                                      width: `${Math.min(pct, 100)}%`,
+                                    }}
+                                    transition={{ duration: 0.6 }}
+                                    className="h-1.5 rounded-full"
+                                    style={{
+                                      background:
+                                        pct >= 100
+                                          ? "#34D399"
+                                          : "linear-gradient(90deg, #818CF8, #22D3EE)",
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </GlassCard>
+                    </motion.div>
+                  )}
+                  {/* Overall budget summary */}
+                  <motion.div {...stagger(3)}>
+                    <GlassCard className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span
+                          className="text-xs"
+                          style={{ color: "var(--tm)" }}
+                        >
+                          Overall budget usage
+                        </span>
+                        <span
+                          className="text-xs font-semibold"
+                          style={{ color: "#818CF8" }}
+                        >
+                          {totals.util}%
+                        </span>
+                      </div>
+                      <div
+                        className="h-2.5 w-full rounded-full overflow-hidden"
+                        style={{ background: "var(--bd)" }}
+                      >
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(totals.util, 100)}%` }}
+                          transition={{ duration: 0.8 }}
+                          className="h-2.5 rounded-full"
+                          style={{
+                            background:
+                              totals.util > 100
+                                ? "#FB7185"
+                                : totals.util > 80
+                                  ? "#FB923C"
+                                  : "linear-gradient(90deg, #818CF8, #22D3EE)",
+                          }}
+                        />
+                      </div>
+                    </GlassCard>
+                  </motion.div>
+                </div>
+              </div>
+            )}
+
+            {/* ── SAVINGS ── */}
+            {activeTab === "Savings" && (
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+                <div className="space-y-6">
+                  {/* Progress list */}
+                  <motion.div {...stagger(1)}>
+                    <GlassCard className="p-5">
+                      <SectionTitle icon={PiggyBank} iconColor="text-green-400">
+                        Savings Goals
+                      </SectionTitle>
+                      {savingsGoals.length === 0 ? (
+                        <p
+                          className="text-xs text-center py-4"
+                          style={{ color: "var(--tf)" }}
+                        >
+                          No savings goals yet. Add one below.
+                        </p>
+                      ) : (
+                        <div className="space-y-4">
+                          {savingsGoals.map((goal) => {
+                            const pct =
+                              Math.min(
+                                100,
+                                Math.round(
+                                  (goal.currentAmount / goal.targetAmount) *
+                                    100,
+                                ),
+                              ) || 0;
+                            const remaining = Math.max(
+                              0,
+                              goal.targetAmount - goal.currentAmount,
+                            );
+                            const done = pct >= 100;
+                            return (
+                              <div key={goal.id} className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span
+                                      className="text-sm font-semibold truncate"
+                                      style={{ color: "var(--tx)" }}
+                                    >
+                                      {goal.name}
+                                    </span>
+                                    {goal.priority && (
+                                      <span
+                                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${goal.priority === "high" ? "text-red-400 bg-red-500/10 border-red-500/20" : goal.priority === "medium" ? "text-orange-400 bg-orange-500/10 border-orange-500/20" : "text-green-400 bg-green-500/10 border-green-500/20"}`}
+                                      >
+                                        {goal.priority}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0 ml-3">
+                                    <span
+                                      className="text-sm font-bold tabular-nums"
+                                      style={{
+                                        color: done ? "#34D399" : "var(--tx)",
+                                      }}
+                                    >
+                                      {pct}%
+                                    </span>
+                                    <button
+                                      onClick={() => handleGoalAddMoney(goal)}
+                                      className="text-[10px] px-2 py-1 rounded-lg font-medium"
+                                      style={{
+                                        background: "rgba(52,211,153,0.12)",
+                                        color: "#34D399",
+                                        border:
+                                          "1px solid rgba(52,211,153,0.25)",
+                                      }}
+                                    >
+                                      + Add
+                                    </button>
+                                    <button
+                                      onClick={() => handleGoalWithdraw(goal)}
+                                      className="text-[10px] px-2 py-1 rounded-lg font-medium"
+                                      style={{
+                                        background: "var(--c4)",
+                                        color: "var(--tm)",
+                                        border: "1px solid var(--c6)",
+                                      }}
+                                    >
+                                      Withdraw
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        removeSavingsGoal(goal.id, goal.name)
+                                      }
+                                      className="transition-colors hover:text-[#FB7185]"
+                                      style={{ color: "var(--tf)" }}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                                <div
+                                  className="h-2 w-full rounded-full overflow-hidden"
+                                  style={{ background: "var(--bd)" }}
+                                >
+                                  <motion.div
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${pct}%` }}
+                                    transition={{
+                                      duration: 0.7,
+                                      ease: "easeOut",
+                                    }}
+                                    className="h-2 rounded-full"
+                                    style={{
+                                      background: done
+                                        ? "#34D399"
+                                        : "linear-gradient(90deg, #818CF8, #22D3EE)",
+                                    }}
+                                  />
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span
+                                    className="text-[11px]"
+                                    style={{ color: "var(--tf)" }}
+                                  >
+                                    {fmt(
+                                      goal.currentAmount,
+                                      selectedCurrency.code,
+                                      selectedCurrency.locale,
+                                    )}{" "}
+                                    saved
+                                  </span>
+                                  <span
+                                    className="text-[11px]"
+                                    style={{ color: "var(--tf)" }}
+                                  >
+                                    {done
+                                      ? "Goal reached! 🎉"
+                                      : `${fmt(remaining, selectedCurrency.code, selectedCurrency.locale)} to go`}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </GlassCard>
+                  </motion.div>
+                </div>
+
+                {/* Add Goal form */}
+                <motion.div {...stagger(2)}>
+                  <GlassCard className="p-5">
+                    <SectionTitle icon={Plus}>New Goal</SectionTitle>
+                    <div className="space-y-3">
+                      {[
+                        {
+                          label: "Goal Name",
+                          key: "name",
+                          placeholder: "e.g., Emergency Fund",
+                          type: "text",
+                        },
+                        {
+                          label: `Target (${selectedCurrency.code})`,
+                          key: "targetAmount",
+                          placeholder: "100000",
+                          type: "numeric",
+                        },
+                        {
+                          label: `Current (${selectedCurrency.code})`,
+                          key: "currentAmount",
+                          placeholder: "25000",
+                          type: "numeric",
+                        },
+                        {
+                          label: "Target Date",
+                          key: "targetDate",
+                          placeholder: "",
+                          type: "date",
+                        },
+                      ].map(({ label, key, placeholder, type }) => (
+                        <div key={key} className="space-y-1">
+                          <label
+                            className="text-xs"
+                            style={{ color: "var(--tf)" }}
+                          >
+                            {label}
+                          </label>
+                          <ThemedInput
+                            type={type === "date" ? "date" : "text"}
+                            inputMode={
+                              type === "numeric" ? "numeric" : undefined
+                            }
+                            placeholder={placeholder}
+                            value={newGoal[key]}
+                            error={!!goalErrors[key]}
+                            onChange={(e) => {
+                              setNewGoal({
+                                ...newGoal,
+                                [key]:
+                                  type === "numeric"
+                                    ? e.target.value.replace(/[^0-9]/g, "")
+                                    : e.target.value,
+                              });
+                              if (goalErrors[key])
+                                setGoalErrors((p) => ({ ...p, [key]: "" }));
+                            }}
+                          />
+                          <FieldError message={goalErrors[key]} />
+                        </div>
+                      ))}
+                      <div className="space-y-1">
+                        <label
+                          className="text-xs"
+                          style={{ color: "var(--tf)" }}
+                        >
+                          Priority
+                        </label>
+                        <Select
+                          value={newGoal.priority}
+                          onValueChange={(v) =>
+                            setNewGoal({ ...newGoal, priority: v })
+                          }
+                        >
+                          <SelectTrigger className="h-[42px] rounded-xl text-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-2xl">
+                            <SelectItem value="low">Low</SelectItem>
+                            <SelectItem value="medium">Medium</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <GradBtn
                         onClick={addSavingsGoal}
                         variant="secondary"
@@ -3130,896 +5855,1718 @@ export default function ExpenseTracker() {
                         + Add Goal
                       </GradBtn>
                     </div>
-                  </div>
-                  {savingsGoals.length === 0 ? (
-                    <p className={`text-xs text-center py-4 ${t.textFaint}`}>
-                      No savings goals yet.
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      <AnimatePresence>
-                        {savingsGoals.map((goal) => (
-                          <SavingsGoalCard
-                            key={goal.id}
-                            goal={goal}
-                            onAddMoney={() => handleGoalAddMoney(goal)}
-                            onWithdraw={() => handleGoalWithdraw(goal)}
-                            onDelete={() =>
-                              removeSavingsGoal(goal.id, goal.name)
-                            }
-                            selectedCurrency={selectedCurrency}
-                          />
-                        ))}
-                      </AnimatePresence>
-                    </div>
-                  )}
-                </GlassCard>
-              </motion.div>
-
-              {/* Add Expense */}
-              <motion.div {...stagger(8)}>
-                <GlassCard className="p-5">
-                  <SectionTitle icon={Plus}>Add Expense</SectionTitle>
-
-                  <div className="mb-5">
-                    <div className="relative">
-                      {showAITip && (
-                        <AITooltip
-                          dark={dark}
-                          onDismiss={async () => {
-                            if (!showAITip) return;
-                            try {
-                              await saveUserDoc(user.uid, {
-                                onboarding: { aiTipDismissed: true },
-                              });
-                              setShowAITip(false);
-                            } catch (err) {
-                              console.error("Failed to dismiss AI tip:", err);
-                              setShowAITip(false);
-                            }
-                          }}
-                        />
-                      )}
-                      <QuickAddBar
-                        categories={categories}
-                        selectedCurrency={selectedCurrency}
-                        onExpenseAdd={handleQuickAddExpense}
-                        addToast={addToast}
-                        showAITip={showAITip}
-                        onAITipDismiss={async () => {
-                          if (!showAITip) return;
-                          try {
-                            await saveUserDoc(user.uid, {
-                              onboarding: { aiTipDismissed: true },
-                            });
-                            setShowAITip(false);
-                          } catch (err) {
-                            console.error("Failed to dismiss AI tip:", err);
-                            setShowAITip(false);
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div
-                    className={`flex items-center gap-3 mb-4 ${dark ? "text-gray-500" : "text-gray-300"}`}
-                  >
-                    <div className="flex-1 h-px bg-current opacity-30" />
-                    <span className="text-xs">or add manually</span>
-                    <div className="flex-1 h-px bg-current opacity-30" />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-6 gap-3 mb-3 sm:items-start">
-                    <div className="sm:col-span-2 space-y-1">
-                      <label className={`text-xs ${t.textFaint}`}>Date</label>
-                      <ThemedInput
-                        type="date"
-                        value={exp.date}
-                        error={!!expErrors.date}
-                        onChange={(e) => {
-                          setExp({ ...exp, date: e.target.value });
-                          if (expErrors.date)
-                            setExpErrors((p) => ({ ...p, date: "" }));
-                        }}
-                      />
-                      <FieldError message={expErrors.date} />
-                    </div>
-                    <div className="sm:col-span-2 space-y-1">
-                      <label className={`text-xs ${t.textFaint}`}>
-                        Category
-                      </label>
-                      <Select
-                        value={exp.category}
-                        onValueChange={(v) => {
-                          setExp({ ...exp, category: v });
-                          if (expErrors.category)
-                            setExpErrors((p) => ({ ...p, category: "" }));
-                        }}
-                      >
-                        <SelectTrigger
-                          className={`h-[42px] rounded-xl text-sm border ${dark ? "bg-[#252a3d] border-white/10 text-gray-200" : "bg-white/60 border-gray-200"} ${expErrors.category ? "border-red-400" : ""}`}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent
-                          className={`rounded-2xl ${dark ? "bg-[#1e2235] border-white/10" : ""}`}
-                        >
-                          {categories.map((c) => (
-                            <SelectItem key={c} value={c}>
-                              {c}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FieldError message={expErrors.category} />
-                    </div>
-                    <div className="sm:col-span-2 space-y-1">
-                      <label className={`text-xs ${t.textFaint}`}>
-                        Amount ({selectedCurrency.code})
-                      </label>
-                      <ThemedInput
-                        inputMode="decimal"
-                        placeholder="e.g., 1200"
-                        value={exp.amount}
-                        error={!!expErrors.amount}
-                        onChange={(e) => {
-                          setExp({
-                            ...exp,
-                            amount: e.target.value.replace(/[^0-9.]/g, ""),
-                          });
-                          if (expErrors.amount)
-                            setExpErrors((p) => ({ ...p, amount: "" }));
-                        }}
-                      />
-                      <FieldError message={expErrors.amount} />
-                    </div>
-                    <div className="sm:col-span-5 space-y-1">
-                      <label className={`text-xs ${t.textFaint}`}>
-                        Description (optional)
-                      </label>
-                      <ThemedInput
-                        placeholder="e.g., BMTC pass, groceries at DMart"
-                        value={exp.description}
-                        onChange={(e) =>
-                          setExp({ ...exp, description: e.target.value })
-                        }
-                      />
-                    </div>
-
-                    {/* Recurring toggle */}
-                    <div className="sm:col-span-6 flex items-center gap-4 flex-wrap">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <div
-                          onClick={() =>
-                            setExp((p) => ({
-                              ...p,
-                              isRecurring: !p.isRecurring,
-                            }))
-                          }
-                          className={`relative w-9 h-5 rounded-full transition-colors ${exp.isRecurring ? "bg-indigo-500" : dark ? "bg-white/20" : "bg-gray-200"}`}
-                        >
-                          <div
-                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${exp.isRecurring ? "translate-x-4" : ""}`}
-                          />
-                        </div>
-                        <span className={`text-xs ${t.textFaint}`}>
-                          Recurring expense
-                        </span>
-                      </label>
-                      {exp.isRecurring && (
-                        <motion.div
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="flex items-center gap-2"
-                        >
-                          <span className={`text-xs ${t.textFaint}`}>
-                            Frequency:
-                          </span>
-                          <select
-                            value={exp.frequency}
-                            onChange={(e) =>
-                              setExp((p) => ({
-                                ...p,
-                                frequency: e.target.value,
-                              }))
-                            }
-                            className={`h-7 px-2 rounded-lg border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 ${dark ? "bg-[#252a3d] border-white/10 text-gray-200" : "bg-white border-gray-200 text-gray-700"}`}
-                          >
-                            <option value="daily">Daily</option>
-                            <option value="weekly">Weekly</option>
-                            <option value="monthly">Monthly</option>
-                            <option value="yearly">Yearly</option>
-                          </select>
-                        </motion.div>
-                      )}
-                    </div>
-                    <div className="sm:col-span-1 flex items-end">
-                      <GradBtn onClick={addExpense} className="w-full">
-                        + Add
-                      </GradBtn>
-                    </div>
-                  </div>
-
-                  {/* Mobile list */}
-                  <div className="mt-4 md:hidden space-y-2">
-                    {expenses.length === 0 ? (
-                      <p className={`text-center text-xs py-4 ${t.textFaint}`}>
-                        No expenses yet.
-                      </p>
-                    ) : (
-                      (() => {
-                        const grouped = groupExpensesByDate(expenses);
-                        const visibleGroups = showOlderExpenses ? grouped : grouped.slice(0, 5);
-                        return (
-                          <>
-                            {visibleGroups.map((group) => {
-                              const isCollapsed = collapsedDates.has(group.dateKey);
-                              return (
-                                <div key={group.dateKey} className="space-y-2">
-                                  <button
-                                    onClick={() => {
-                                      const next = new Set(collapsedDates);
-                                      if (isCollapsed) next.delete(group.dateKey);
-                                      else next.add(group.dateKey);
-                                      setCollapsedDates(next);
-                                    }}
-                                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg ${dark ? "bg-white/5 hover:bg-white/10" : "bg-black/5 hover:bg-black/10"} transition-colors`}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <ChevronDown
-                                        className={`h-4 w-4 transition-transform ${isCollapsed ? "-rotate-90" : ""} ${t.textMuted}`}
-                                      />
-                                      <span className={`text-sm font-semibold ${t.text}`}>
-                                        {formatDateHeader(group.date)}
-                                      </span>
-                                      <span className={`text-xs ${t.textFaint}`}>
-                                        ({group.items.length})
-                                      </span>
-                                    </div>
-                                    <span className={`text-sm font-semibold ${t.text}`}>
-                                      {fmt(group.total, selectedCurrency.code, selectedCurrency.locale)}
-                                    </span>
-                                  </button>
-                                  <AnimatePresence>
-                                    {!isCollapsed &&
-                                      group.items.map((e) => (
-                                        <motion.div
-                                          key={e.id}
-                                          initial={{ opacity: 0, height: 0 }}
-                                          animate={{ opacity: 1, height: "auto" }}
-                                          exit={{ opacity: 0, height: 0 }}
-                                          className={`flex items-start justify-between gap-3 px-3 py-3 rounded-xl border ${t.itemBg}`}
-                                        >
-                                          <div>
-                                            <div className="flex items-center gap-2">
-                                              <span
-                                                className="h-2 w-2 rounded-full shrink-0"
-                                                style={{ background: colorFor(e.category) }}
-                                              />
-                                              <span className={`text-sm font-medium ${t.text}`}>
-                                                {e.category}
-                                              </span>
-                                            </div>
-                                            {e.description && (
-                                              <p className={`text-xs mt-0.5 ${t.textMuted}`}>
-                                                {e.description}
-                                              </p>
-                                            )}
-                                          </div>
-                                          <div className="flex items-center gap-2 shrink-0">
-                                            <span className={`text-sm font-semibold ${t.text}`}>
-                                              {fmt(e.amount, selectedCurrency.code, selectedCurrency.locale)}
-                                            </span>
-                                            <button
-                                              onClick={() => setEditingExpense(e)}
-                                              className={`transition-colors ${dark ? "text-gray-600 hover:text-indigo-400" : "text-gray-300 hover:text-indigo-400"}`}
-                                            >
-                                              <Pencil className="h-3.5 w-3.5" />
-                                            </button>
-                                            <button
-                                              onClick={() => removeExpense(e.id)}
-                                              className={`transition-colors ${dark ? "text-gray-600 hover:text-red-400" : "text-gray-300 hover:text-red-400"}`}
-                                            >
-                                              <Trash2 className="h-3.5 w-3.5" />
-                                            </button>
-                                          </div>
-                                        </motion.div>
-                                      ))}
-                                  </AnimatePresence>
-                                </div>
-                              );
-                            })}
-                            {grouped.length > 5 && (
-                              <button
-                                onClick={() => setShowOlderExpenses(!showOlderExpenses)}
-                                className={`w-full py-2 text-xs font-medium ${t.textMuted} hover:${t.text} transition-colors`}
-                              >
-                                {showOlderExpenses
-                                  ? "Show less"
-                                  : `Show ${grouped.length - 5} older ${grouped.length - 5 === 1 ? "day" : "days"}`}
-                              </button>
-                            )}
-                          </>
-                        );
-                      })()
-                    )}
-                  </div>
-
-                  {/* Desktop table */}
-                  <div className="mt-4 hidden md:block overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr
-                          className={`text-left text-xs border-b ${t.tableHead}`}
-                        >
-                          <th className="pb-2 pl-2 font-medium">Date</th>
-                          <th className="pb-2 font-medium">Category</th>
-                          <th className="pb-2 font-medium">Description</th>
-                          <th className="pb-2 text-right font-medium">
-                            Amount
-                          </th>
-                          <th className="pb-2 text-right pr-2 font-medium">
-                            Action
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {expenses.length === 0 ? (
-                          <tr>
-                            <td colSpan={5} className={`py-8 text-center text-xs ${t.textFaint}`}>
-                              No expenses yet. Add your first one above.
-                            </td>
-                          </tr>
-                        ) : (
-                          (() => {
-                            const grouped = groupExpensesByDate(expenses);
-                            const visibleGroups = showOlderExpenses ? grouped : grouped.slice(0, 5);
-                            return (
-                              <>
-                                {visibleGroups.map((group) => {
-                                  const isCollapsed = collapsedDates.has(group.dateKey);
-                                  return (
-                                    <React.Fragment key={group.dateKey}>
-                                      <tr
-                                        className={`cursor-pointer ${dark ? "bg-white/5 hover:bg-white/10" : "bg-black/5 hover:bg-black/10"} transition-colors`}
-                                        onClick={() => {
-                                          const next = new Set(collapsedDates);
-                                          if (isCollapsed) next.delete(group.dateKey);
-                                          else next.add(group.dateKey);
-                                          setCollapsedDates(next);
-                                        }}
-                                      >
-                                        <td colSpan={3} className="py-2 pl-2">
-                                          <div className="flex items-center gap-2">
-                                            <ChevronDown
-                                              className={`h-4 w-4 transition-transform ${isCollapsed ? "-rotate-90" : ""} ${t.textMuted}`}
-                                            />
-                                            <span className={`text-sm font-semibold ${t.text}`}>
-                                              {formatDateHeader(group.date)}
-                                            </span>
-                                            <span className={`text-xs ${t.textFaint}`}>
-                                              ({group.items.length} {group.items.length === 1 ? "expense" : "expenses"})
-                                            </span>
-                                          </div>
-                                        </td>
-                                        <td className={`py-2 text-right font-semibold ${t.text}`}>
-                                          {fmt(group.total, selectedCurrency.code, selectedCurrency.locale)}
-                                        </td>
-                                        <td className="py-2 pr-2"></td>
-                                      </tr>
-                                      {!isCollapsed &&
-                                        group.items.map((e) => (
-                                          <motion.tr
-                                            key={e.id}
-                                            initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            exit={{ opacity: 0 }}
-                                            className={`border-b transition-colors group ${dark ? "border-white/5 hover:bg-white/5" : "border-gray-100/60 hover:bg-white/40"}`}
-                                          >
-                                            <td className={`py-3 pl-2 ${t.textMuted}`}>
-                                              {new Date(e.date).toLocaleDateString()}
-                                            </td>
-                                            <td className="py-3">
-                                              <span className="flex items-center gap-1.5">
-                                                <span
-                                                  className="h-2 w-2 rounded-full shrink-0"
-                                                  style={{ background: colorFor(e.category) }}
-                                                />
-                                                <span className={t.text}>{e.category}</span>
-                                              </span>
-                                            </td>
-                                            <td className={`py-3 ${t.textMuted}`}>{e.description}</td>
-                                            <td className={`py-3 text-right font-semibold ${t.text}`}>
-                                              {fmt(e.amount, selectedCurrency.code, selectedCurrency.locale)}
-                                            </td>
-                                            <td className="py-3 text-right pr-2">
-                                              <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button
-                                                  onClick={() => setEditingExpense(e)}
-                                                  className={`transition-colors ${dark ? "text-gray-600 hover:text-indigo-400" : "text-gray-300 hover:text-indigo-400"}`}
-                                                >
-                                                  <Pencil className="h-3.5 w-3.5" />
-                                                </button>
-                                                <button
-                                                  onClick={() => removeExpense(e.id)}
-                                                  className={`transition-colors ${dark ? "text-gray-600 hover:text-red-400" : "text-gray-300 hover:text-red-400"}`}
-                                                >
-                                                  <Trash2 className="h-3.5 w-3.5" />
-                                                </button>
-                                              </div>
-                                            </td>
-                                          </motion.tr>
-                                        ))}
-                                    </React.Fragment>
-                                  );
-                                })}
-                                {grouped.length > 5 && (
-                                  <tr>
-                                    <td colSpan={5} className="py-2 text-center">
-                                      <button
-                                        onClick={() => setShowOlderExpenses(!showOlderExpenses)}
-                                        className={`text-xs font-medium ${t.textMuted} hover:${t.text} transition-colors`}
-                                      >
-                                        {showOlderExpenses
-                                          ? "Show less"
-                                          : `Show ${grouped.length - 5} older ${grouped.length - 5 === 1 ? "day" : "days"}`}
-                                      </button>
-                                    </td>
-                                  </tr>
-                                )}
-                              </>
-                            );
-                          })()
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </GlassCard>
-              </motion.div>
-
-              {/* Manage Categories */}
-              <motion.div {...stagger(9)}>
-                <GlassCard className="p-5">
-                  <SectionTitle icon={Target}>Manage Categories</SectionTitle>
-                  <div className="flex gap-2 mb-3">
-                    <ThemedInput
-                      placeholder="New category name"
-                      value={newCat}
-                      maxLength={MAX_CATEGORY_NAME_LEN}
-                      onChange={(e) => {
-                        setNewCat(e.target.value);
-                        if (catError) setCatError("");
-                      }}
-                    />
-                    <GradBtn onClick={addCategory}>Add</GradBtn>
-                  </div>
-                  {catError ? (
-                    <p className="mb-2 text-xs text-red-400">{catError}</p>
-                  ) : (
-                    <p className={`mb-3 text-xs ${t.textFaint}`}>
-                      Up to {MAX_CATEGORIES} categories.
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    {categories.map((c) => (
-                      <motion.span
-                        key={c}
-                        layout
-                        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border"
-                        style={{
-                          background: `${colorFor(c)}22`,
-                          borderColor: `${colorFor(c)}40`,
-                          color: colorFor(c),
-                        }}
-                      >
-                        {c}
-                        {c !== "Other" && (
-                          <button
-                            onClick={() => deleteCategory(c)}
-                            className="hover:opacity-60 transition-opacity ml-0.5"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        )}
-                      </motion.span>
-                    ))}
-                  </div>
-                </GlassCard>
-              </motion.div>
-
-              {/* Recurring Expenses */}
-              {recurringExpenses.length > 0 && (
-                <motion.div {...stagger(10)}>
-                  <GlassCard className="p-5">
-                    <div className="flex items-center gap-2 mb-4">
-                      <span className="text-base">🔄</span>
-                      <h2
-                        className={`font-semibold text-sm ${dark ? "text-gray-200" : "text-gray-700"}`}
-                      >
-                        Recurring Expenses
-                      </h2>
-                    </div>
-                    <div className="space-y-2">
-                      {recurringExpenses.map((r) => (
-                        <div
-                          key={r.id}
-                          className={`flex items-center justify-between p-3 rounded-xl border ${dark ? "bg-white/5 border-white/5" : "bg-white/50 border-gray-100"}`}
-                        >
-                          <div className="min-w-0">
-                            <p
-                              className={`text-sm font-medium truncate ${dark ? "text-gray-200" : "text-gray-700"}`}
-                            >
-                              {r.description || r.category}
-                            </p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span
-                                className={`text-xs ${dark ? "text-gray-500" : "text-gray-400"}`}
-                              >
-                                {r.category}
-                              </span>
-                              <span
-                                className={`text-[10px] px-1.5 py-0.5 rounded-full ${dark ? "bg-white/10 text-gray-400" : "bg-gray-100 text-gray-500"}`}
-                              >
-                                {r.frequency}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3 shrink-0 ml-3">
-                            <span
-                              className={`text-sm font-semibold ${dark ? "text-indigo-300" : "text-indigo-600"}`}
-                            >
-                              {fmt(
-                                r.amount,
-                                selectedCurrency.code,
-                                selectedCurrency.locale,
-                              )}
-                            </span>
-                            <button
-                              onClick={() => removeRecurringExpense(r.id)}
-                              className={`transition-colors ${dark ? "text-gray-600 hover:text-red-400" : "text-gray-300 hover:text-red-400"}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
                   </GlassCard>
                 </motion.div>
-              )}
-
-              <div className="mt-2">
-                <TipsDialog />
               </div>
-            </div>
+            )}
 
-            {/* RIGHT COLUMN */}
-            <div className="space-y-6">
-              {/* Donut chart */}
-              <motion.div {...stagger(2)}>
-                <GlassCard className="p-5">
-                  <SectionTitle icon={TrendingUp}>By Category</SectionTitle>
-                  {totals.byCat.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-10">
-                      <div className="text-4xl mb-2">📊</div>
-                      <p className={`text-xs ${t.textFaint}`}>
-                        Add expenses to see breakdown.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="h-48">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={totals.byCat}
-                              dataKey="value"
-                              nameKey="name"
-                              innerRadius={55}
-                              outerRadius={80}
-                              paddingAngle={2}
+            {/* ── AI INSIGHTS ── */}
+            {activeTab === "AI Insights" &&
+              (() => {
+                const periodLabel =
+                  monthOptions.find((m) => m.key === selectedMonth)?.label ||
+                  "This month";
+                const cachedInsights = insightsCache[currentPeriodKey] || null;
+
+                // Active window expenses: Quarter/Year loaded from Firestore, Week filtered locally
+                const cutoff = new Date();
+                cutoff.setDate(cutoff.getDate() - 7);
+                const activeWindowExpenses =
+                  windowExpenses ??
+                  (insightsPeriod === "Week"
+                    ? expenses.filter((e) => new Date(e.date) >= cutoff)
+                    : expenses);
+                const activeIncome = windowIncome ?? totals.income;
+
+                // Weekly pattern from active window
+                const weeklyAcc = {
+                  Mon: 0,
+                  Tue: 0,
+                  Wed: 0,
+                  Thu: 0,
+                  Fri: 0,
+                  Sat: 0,
+                  Sun: 0,
+                };
+                activeWindowExpenses.forEach((e) => {
+                  const label = [
+                    "Sun",
+                    "Mon",
+                    "Tue",
+                    "Wed",
+                    "Thu",
+                    "Fri",
+                    "Sat",
+                  ][new Date(e.date).getDay()];
+                  weeklyAcc[label] += Number(e.amount) || 0;
+                });
+                const weeklyData = [
+                  "Mon",
+                  "Tue",
+                  "Wed",
+                  "Thu",
+                  "Fri",
+                  "Sat",
+                  "Sun",
+                ].map((d) => ({ day: d, amount: Math.round(weeklyAcc[d]) }));
+                const peakDay = weeklyData.reduce(
+                  (a, b) => (b.amount > a.amount ? b : a),
+                  weeklyData[0],
+                );
+
+                // Category totals from active window
+                const catTotals = {};
+                activeWindowExpenses.forEach((e) => {
+                  catTotals[e.category] =
+                    (catTotals[e.category] || 0) + Number(e.amount || 0);
+                });
+                const catEntries = Object.entries(catTotals)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 7)
+                  .map(([cat, spent]) => ({
+                    cat,
+                    spent,
+                    budget: catBudgets?.[cat] || 0,
+                  }));
+                const maxCatSpend = catEntries.reduce(
+                  (m, c) => Math.max(m, c.spent),
+                  1,
+                );
+                const topCategory = catEntries[0]?.cat || "—";
+                const topCategoryAmount = catEntries[0]?.spent || 0;
+
+                // Aggregate stats
+                const totalWindowExpenses = activeWindowExpenses.reduce(
+                  (sum, e) => sum + Number(e.amount || 0),
+                  0,
+                );
+                const netSavings = activeIncome - totalWindowExpenses;
+                const savingsRate =
+                  activeIncome > 0
+                    ? Math.round((netSavings / activeIncome) * 100)
+                    : 0;
+                const windowDays =
+                  insightsPeriod === "Week"
+                    ? 7
+                    : insightsPeriod === "Quarter"
+                      ? 90
+                      : insightsPeriod === "Year"
+                        ? 365
+                        : Math.max(1, new Date().getDate());
+                const dailyVelocity = Math.round(
+                  totalWindowExpenses / windowDays,
+                );
+
+                // AI narrative cards — static per period, not affected by window toggle
+                const watchOut =
+                  cachedInsights?.anomalies?.find(
+                    (a) => a.severity === "high" || a.severity === "medium",
+                  ) || cachedInsights?.anomalies?.[0];
+                const win =
+                  cachedInsights?.anomalies?.find(
+                    (a) => a.severity === "low" && a !== watchOut,
+                  ) || cachedInsights?.anomalies?.find((a) => a !== watchOut);
+
+                return (
+                  <div className="space-y-5 max-w-5xl">
+                    {/* ─ Persistent header with period toggle ─ */}
+                    {expenses.length > 0 && (
+                      <motion.div {...stagger(1)}>
+                        <div className="flex items-start justify-between flex-wrap gap-4">
+                          <div>
+                            <p
+                              className="text-[11px] font-bold tracking-[0.14em] uppercase mb-1.5"
+                              style={{ color: "#A78BFA" }}
                             >
-                              {totals.byCat.map((entry) => (
-                                <Cell
-                                  key={entry.name}
-                                  fill={colorFor(entry.name)}
-                                />
-                              ))}
-                            </Pie>
-                            <Tooltip
-                              formatter={(v) =>
-                                fmt(
-                                  Number(v),
-                                  selectedCurrency.code,
-                                  selectedCurrency.locale,
-                                )
-                              }
-                              contentStyle={{
-                                borderRadius: 12,
-                                border: "none",
-                                boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
-                                background: dark ? "#1e2235" : "#fff",
-                                color: dark ? "#e2e8f0" : "#1f2937",
-                              }}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        {totals.byCat.map((entry) => {
-                          const pct =
-                            totals.totalExp > 0
-                              ? ((entry.value / totals.totalExp) * 100).toFixed(
-                                  1,
-                                )
-                              : "0.0";
-                          return (
-                            <div
-                              key={entry.name}
-                              className="flex items-center justify-between text-xs"
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span
-                                  className="h-2.5 w-2.5 rounded-full shrink-0"
-                                  style={{ background: colorFor(entry.name) }}
-                                />
-                                <span className={`truncate ${t.textMuted}`}>
-                                  {entry.name}
-                                </span>
-                              </div>
-                              <div
-                                className={`flex items-center gap-2 shrink-0 ml-2 ${t.textMuted}`}
-                              >
-                                <span>
-                                  {fmt(
-                                    entry.value,
-                                    selectedCurrency.code,
-                                    selectedCurrency.locale,
-                                  )}
-                                </span>
-                                <span
-                                  className={`w-10 text-right font-semibold ${t.text}`}
-                                >
-                                  {pct}%
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-                </GlassCard>
-              </motion.div>
-
-              {/* Spending Trends */}
-              <motion.div {...stagger(3)}>
-                <GlassCard className="p-5">
-                  <SectionTitle icon={TrendingUp}>Spending Trends</SectionTitle>
-                  <p className={`text-xs mb-4 -mt-1 ${t.textFaint}`}>
-                    Spending vs income over the last 6 months
-                  </p>
-                  {trendLoading ? (
-                    <div className="flex items-center justify-center h-[220px]">
-                      <Loader2
-                        className={`h-5 w-5 animate-spin ${dark ? "text-indigo-400" : "text-indigo-500"}`}
-                      />
-                    </div>
-                  ) : trendData.length === 0 ? (
-                    <div className="flex items-center justify-center h-[220px]">
-                      <p className={`text-xs ${t.textFaint}`}>No trend data yet</p>
-                    </div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <LineChart
-                        data={trendData}
-                        margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
-                      >
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke={dark ? "#ffffff10" : "#00000010"}
-                          vertical={false}
-                        />
-                        <XAxis
-                          dataKey="month"
-                          tick={{ fill: dark ? "#9ca3af" : "#6b7280", fontSize: 11 }}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <YAxis hide={true} />
-                        <Tooltip
-                          formatter={(value, name) => [
-                            fmt(Number(value), selectedCurrency.code, selectedCurrency.locale),
-                            name === "spending" ? "Spending" : "Income",
-                          ]}
-                          labelFormatter={(label) => label}
-                          labelStyle={{ color: "#a5b4fc", fontWeight: 600 }}
-                          contentStyle={{
-                            borderRadius: 12,
-                            border: "none",
-                            boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
-                            background: "#1e2235",
-                            color: "#e2e8f0",
-                          }}
-                        />
-                        <Legend
-                          verticalAlign="top"
-                          align="right"
-                          wrapperStyle={{ fontSize: 11, paddingBottom: 8 }}
-                          formatter={(value) => value === "spending" ? "Spending" : "Income"}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="spending"
-                          stroke="#f87171"
-                          strokeWidth={2}
-                          dot={false}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="income"
-                          stroke="#34d399"
-                          strokeWidth={2}
-                          dot={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  )}
-                </GlassCard>
-              </motion.div>
-
-              {/* Category Budgets */}
-              <motion.div {...stagger(3)}>
-                <GlassCard className="p-5">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Target className="h-4 w-4 text-indigo-400" />
-                    <h2 className={`font-semibold text-sm ${t.text}`}>
-                      Category Budgets
-                    </h2>
-                    {anyOverBudget && (
-                      <span className="ml-auto text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
-                        Over budget
-                      </span>
-                    )}
-                  </div>
-                  <p className={`text-xs mb-4 ${t.textFaint}`}>
-                    Set spending limits per category
-                  </p>
-                  <div className="space-y-5">
-                    {categories.map((c) => {
-                      const spent =
-                        totals.byCat.find((x) => x.name === c)?.value || 0;
-                      const bud = Number(catBudgets[c]) || 0;
-                      const diff = bud - spent;
-                      const isOver = bud > 0 && diff < 0;
-                      const pct =
-                        bud > 0 ? Math.min((spent / bud) * 100, 100) : 0;
-                      return (
-                        <div key={c} className="space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <span
-                                className="h-2 w-2 rounded-full"
-                                style={{ background: colorFor(c) }}
-                              />
-                              <span className={`text-xs font-medium ${t.text}`}>
-                                {c}
-                              </span>
-                            </div>
-                            {isOver ? (
-                              <span className="text-[10px] font-medium text-red-400">
-                                {fmt(
-                                  Math.abs(diff),
-                                  selectedCurrency.code,
-                                  selectedCurrency.locale,
-                                )}{" "}
-                                over
-                              </span>
-                            ) : bud > 0 ? (
-                              <span className={`text-[10px] ${t.textFaint}`}>
-                                {fmt(
-                                  diff,
-                                  selectedCurrency.code,
-                                  selectedCurrency.locale,
-                                )}{" "}
-                                left
-                              </span>
-                            ) : null}
-                          </div>
-                          <input
-                            inputMode="numeric"
-                            placeholder={`Budget (${selectedCurrency.code})`}
-                            value={catBudgets[c] ?? ""}
-                            className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all
-                              ${dark ? `bg-[#252a3d] text-gray-200 placeholder-gray-500 ${isOver ? "border-red-500/40" : "border-white/10"}` : `bg-white/60 text-gray-800 ${isOver ? "border-red-300" : "border-gray-200"}`}`}
-                            onChange={(e) =>
-                              setBudget(
-                                c,
-                                e.target.value.replace(/[^0-9]/g, ""),
-                              )
-                            }
-                          />
-                          {bud > 0 && (
-                            <div className="flex items-center gap-2">
-                              <div
-                                className={`flex-1 h-1.5 rounded-full overflow-hidden ${dark ? "bg-white/10" : "bg-gray-100"}`}
-                              >
-                                <motion.div
-                                  initial={{ width: 0 }}
-                                  animate={{ width: `${pct}%` }}
-                                  transition={{ duration: 0.6 }}
-                                  className={`h-1.5 rounded-full ${isOver ? "bg-red-400" : pct > 80 ? "bg-orange-400" : "bg-gradient-to-r from-indigo-400 to-cyan-400"}`}
-                                />
-                              </div>
-                              <span
-                                className={`text-[10px] shrink-0 ${t.textFaint}`}
-                              >
-                                {fmt(
-                                  spent,
-                                  selectedCurrency.code,
-                                  selectedCurrency.locale,
-                                )}{" "}
-                                spent
-                              </span>
-                            </div>
-                          )}
-                          {bud === 0 && (
-                            <p className={`text-[10px] ${t.textFaint}`}>
-                              no budget set
+                              AI Insights · {periodLabel}
                             </p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </GlassCard>
-              </motion.div>
-
-              {/* Goals overview */}
-              {savingsGoals.length > 0 && (
-                <motion.div {...stagger(4)}>
-                  <GlassCard className="p-5">
-                    <SectionTitle icon={PiggyBank} iconColor="text-green-400">
-                      Goals Overview
-                    </SectionTitle>
-                    <div className="space-y-3">
-                      {savingsGoals.map((goal) => {
-                        const pct =
-                          (goal.currentAmount / goal.targetAmount) * 100;
-                        return (
-                          <div key={goal.id}>
-                            <div className="flex items-center justify-between mb-1">
-                              <span
-                                className={`text-xs font-medium truncate ${t.text}`}
+                            {cachedInsights && !insightsLoading && (
+                              <h1
+                                className="text-xl font-bold leading-snug max-w-lg"
+                                style={{ color: "var(--tx)" }}
                               >
-                                {goal.name}
-                              </span>
-                              <span className="text-xs text-indigo-400 font-semibold shrink-0 ml-2">
-                                {pct.toFixed(0)}%
-                              </span>
-                            </div>
-                            <div
-                              className={`h-1.5 w-full rounded-full overflow-hidden ${dark ? "bg-white/10" : "bg-gray-100"}`}
-                            >
-                              <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${Math.min(pct, 100)}%` }}
-                                transition={{ duration: 0.6 }}
-                                className={`h-1.5 rounded-full ${pct >= 100 ? "bg-green-400" : "bg-gradient-to-r from-indigo-400 to-cyan-400"}`}
-                              />
-                            </div>
+                                {cachedInsights.personality?.tagline ||
+                                  "Your spending summary is ready."}
+                              </h1>
+                            )}
                           </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div
+                              className="flex rounded-xl p-0.5"
+                              style={{
+                                background: "var(--c6)",
+                                border: "1px solid var(--bd)",
+                              }}
+                            >
+                              {["Week", "Month", "Quarter", "Year"].map((p) => (
+                                <button
+                                  key={p}
+                                  disabled={windowLoading || insightsLoading}
+                                  onClick={() => switchInsightsWindow(p)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
+                                  style={
+                                    p === insightsPeriod
+                                      ? {
+                                          background:
+                                            "linear-gradient(135deg,#A78BFA,#818CF8)",
+                                          color: "#fff",
+                                        }
+                                      : { color: "var(--tm)" }
+                                  }
+                                >
+                                  {p}
+                                </button>
+                              ))}
+                            </div>
+                            {!insightsLoading && (
+                              <button
+                                onClick={() => fetchInsights(true)}
+                                className="h-8 px-3 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-opacity hover:opacity-70"
+                                style={{
+                                  background: "var(--c6)",
+                                  border: "1px solid var(--bd)",
+                                  color: "var(--tm)",
+                                }}
+                                title="Force a fresh AI analysis"
+                              >
+                                ↻ Refresh
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Loading AI */}
+                    {insightsLoading && (
+                      <div className="flex flex-col items-center justify-center py-20 gap-4">
+                        <div
+                          className="relative w-16 h-16 flex items-center justify-center rounded-3xl"
+                          style={{
+                            background:
+                              "linear-gradient(135deg, rgba(167,139,250,0.2), rgba(129,140,248,0.1))",
+                            border: "1px solid rgba(129,140,248,0.3)",
+                          }}
+                        >
+                          <Loader2
+                            className="h-7 w-7 animate-spin"
+                            style={{ color: "#A78BFA" }}
+                          />
+                        </div>
+                        <div className="text-center">
+                          <p
+                            className="text-sm font-semibold"
+                            style={{ color: "var(--tx)" }}
+                          >
+                            {insightsLoadingMsg}
+                          </p>
+                          <p
+                            className="text-xs mt-1"
+                            style={{ color: "var(--tf)" }}
+                          >
+                            Claude is reading {periodLabel}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* No data for this period at all */}
+                    {insightsError === "no_data_for_period" &&
+                      !insightsLoading && (
+                        <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+                          <div
+                            className="w-14 h-14 flex items-center justify-center rounded-2xl"
+                            style={{
+                              background: "var(--c6)",
+                              border: "1px solid var(--bd)",
+                            }}
+                          >
+                            <Sparkles
+                              className="h-6 w-6"
+                              style={{ color: "var(--tf)" }}
+                            />
+                          </div>
+                          <div className="max-w-xs">
+                            <p
+                              className="text-sm font-semibold mb-1"
+                              style={{ color: "var(--tx)" }}
+                            >
+                              No data for this period
+                            </p>
+                            <p
+                              className="text-xs"
+                              style={{ color: "var(--tm)" }}
+                            >
+                              Add some expenses or select a different range.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                    {/* API error */}
+                    {insightsError &&
+                      insightsError !== "no_data_for_period" &&
+                      !insightsLoading && (
+                        <GlassCard className="p-8 flex flex-col items-center gap-4 text-center">
+                          <AlertCircle
+                            className="h-10 w-10"
+                            style={{ color: "#FB7185" }}
+                          />
+                          <div>
+                            <p
+                              className="font-semibold"
+                              style={{ color: "var(--tx)" }}
+                            >
+                              Could not load insights
+                            </p>
+                            <p
+                              className="text-sm mt-1"
+                              style={{ color: "var(--tm)" }}
+                            >
+                              {insightsError}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setInsightsError("");
+                              fetchInsights();
+                            }}
+                            className="px-5 py-2 rounded-xl text-sm font-semibold text-white"
+                            style={{
+                              background:
+                                "linear-gradient(135deg, #A78BFA, #818CF8)",
+                            }}
+                          >
+                            Try again
+                          </button>
+                        </GlassCard>
+                      )}
+
+                    {/* No expenses yet */}
+                    {!insightsLoading &&
+                      !insightsError &&
+                      expenses.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-28 gap-4">
+                          <div
+                            className="w-16 h-16 flex items-center justify-center rounded-3xl"
+                            style={{
+                              background:
+                                "linear-gradient(135deg, rgba(167,139,250,0.2), rgba(129,140,248,0.1))",
+                              border: "1px solid rgba(129,140,248,0.3)",
+                            }}
+                          >
+                            <Sparkles
+                              className="h-7 w-7"
+                              style={{ color: "#A78BFA" }}
+                            />
+                          </div>
+                          <div className="text-center max-w-xs">
+                            <p
+                              className="text-base font-semibold mb-1"
+                              style={{ color: "var(--tx)" }}
+                            >
+                              No expenses yet
+                            </p>
+                            <p
+                              className="text-sm"
+                              style={{ color: "var(--tm)" }}
+                            >
+                              Add some expenses first so Claude can analyse your
+                              spending.
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => setActiveTab("Expenses")}
+                            className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white"
+                            style={{
+                              background:
+                                "linear-gradient(135deg, #A78BFA, #818CF8)",
+                            }}
+                          >
+                            Add Expenses
+                          </button>
+                        </div>
+                      )}
+
+                    {/* Main content — shown once AI has loaded and we have expenses */}
+                    {!insightsLoading &&
+                      !insightsError &&
+                      expenses.length > 0 && (
+                        <>
+                          {/* Window loading indicator for Quarter / Year Firestore fetch */}
+                          {windowLoading && (
+                            <div className="flex items-center gap-2 px-1">
+                              <Loader2
+                                className="h-3.5 w-3.5 animate-spin shrink-0"
+                                style={{ color: "#A78BFA" }}
+                              />
+                              <span
+                                className="text-xs"
+                                style={{ color: "var(--tm)" }}
+                              >
+                                Loading {insightsPeriod} data…
+                              </span>
+                            </div>
+                          )}
+
+                          {/* ─ Stat Cards (computed locally from the active window) ─ */}
+                          <motion.div
+                            {...stagger(2)}
+                            className="grid grid-cols-2 lg:grid-cols-4 gap-3"
+                          >
+                            {[
+                              {
+                                label: "Net Savings",
+                                value: fmt(
+                                  netSavings,
+                                  selectedCurrency.code,
+                                  selectedCurrency.locale,
+                                ),
+                                sub: `${savingsRate}% savings rate`,
+                                icon:
+                                  netSavings >= 0 ? TrendingUp : TrendingDown,
+                                color: netSavings >= 0 ? "#34D399" : "#FB7185",
+                              },
+                              {
+                                label: "Daily Spend",
+                                value: fmt(
+                                  dailyVelocity,
+                                  selectedCurrency.code,
+                                  selectedCurrency.locale,
+                                ),
+                                sub: "per day this period",
+                                icon: Zap,
+                                color: "#818CF8",
+                              },
+                              {
+                                label: "Top Category",
+                                value: topCategory,
+                                sub: fmt(
+                                  topCategoryAmount,
+                                  selectedCurrency.code,
+                                  selectedCurrency.locale,
+                                ),
+                                icon: PiggyBank,
+                                color: "#FBBF24",
+                              },
+                              {
+                                label: "Total Spent",
+                                value: fmt(
+                                  totalWindowExpenses,
+                                  selectedCurrency.code,
+                                  selectedCurrency.locale,
+                                ),
+                                sub: `${activeWindowExpenses.length} transactions`,
+                                icon: Receipt,
+                                color: "#22D3EE",
+                              },
+                            ].map(
+                              ({ label, value, sub, icon: Icon, color }) => (
+                                <GlassCard key={label} className="p-4">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <span
+                                      className="text-[10px] font-semibold uppercase tracking-wider"
+                                      style={{ color: "var(--tf)" }}
+                                    >
+                                      {label}
+                                    </span>
+                                    <div
+                                      className="w-7 h-7 rounded-lg flex items-center justify-center"
+                                      style={{ background: `${color}18` }}
+                                    >
+                                      <Icon
+                                        className="h-3.5 w-3.5"
+                                        style={{ color }}
+                                      />
+                                    </div>
+                                  </div>
+                                  <p
+                                    className="text-base font-bold leading-tight truncate"
+                                    style={{ color }}
+                                  >
+                                    {value}
+                                  </p>
+                                  <p
+                                    className="text-[11px] mt-1"
+                                    style={{ color: "var(--tf)" }}
+                                  >
+                                    {sub}
+                                  </p>
+                                </GlassCard>
+                              ),
+                            )}
+                          </motion.div>
+
+                          {/* ─ Watch Out + Win cards (from cached AI, static per period) ─ */}
+                          {cachedInsights?.anomalies?.length > 0 && (
+                            <motion.div
+                              {...stagger(3)}
+                              className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                            >
+                              {watchOut && (
+                                <GlassCard
+                                  className="p-5"
+                                  style={{
+                                    borderColor: "rgba(251,113,133,0.3)",
+                                    boxShadow:
+                                      "0 0 32px -16px rgba(251,113,133,0.3)",
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <div
+                                      className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                                      style={{
+                                        background: "rgba(251,113,133,0.15)",
+                                      }}
+                                    >
+                                      <AlertTriangle
+                                        className="h-3.5 w-3.5"
+                                        style={{ color: "#FB7185" }}
+                                      />
+                                    </div>
+                                    <span
+                                      className="text-[10px] font-bold uppercase tracking-widest"
+                                      style={{ color: "#FB7185" }}
+                                    >
+                                      Watch Out
+                                    </span>
+                                    <span
+                                      className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize"
+                                      style={{
+                                        background: "rgba(251,113,133,0.1)",
+                                        color: "#FB7185",
+                                        border:
+                                          "1px solid rgba(251,113,133,0.2)",
+                                      }}
+                                    >
+                                      {watchOut.severity}
+                                    </span>
+                                  </div>
+                                  <p
+                                    className="text-sm font-semibold mb-1.5"
+                                    style={{ color: "var(--tx)" }}
+                                  >
+                                    {watchOut.title}
+                                  </p>
+                                  <p
+                                    className="text-xs leading-relaxed mb-3"
+                                    style={{ color: "var(--tm)" }}
+                                  >
+                                    {watchOut.description}
+                                  </p>
+                                  {watchOut.comparedTo && (
+                                    <p
+                                      className="text-[11px] mb-3"
+                                      style={{ color: "#FB7185" }}
+                                    >
+                                      vs {watchOut.comparedTo}
+                                    </p>
+                                  )}
+                                  <button
+                                    onClick={() =>
+                                      setActiveTab(
+                                        watchOut.category
+                                          ? "Budgets"
+                                          : "Expenses",
+                                      )
+                                    }
+                                    className="w-full py-2 rounded-xl text-xs font-semibold transition-opacity hover:opacity-80"
+                                    style={{
+                                      background: "rgba(251,113,133,0.1)",
+                                      color: "#FB7185",
+                                      border: "1px solid rgba(251,113,133,0.2)",
+                                    }}
+                                  >
+                                    View {watchOut.category || "Expenses"} →
+                                  </button>
+                                </GlassCard>
+                              )}
+
+                              {win ? (
+                                <GlassCard
+                                  className="p-5"
+                                  style={{
+                                    borderColor: "rgba(52,211,153,0.3)",
+                                    boxShadow:
+                                      "0 0 32px -16px rgba(52,211,153,0.25)",
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <div
+                                      className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                                      style={{
+                                        background: "rgba(52,211,153,0.15)",
+                                      }}
+                                    >
+                                      <CheckCircle2
+                                        className="h-3.5 w-3.5"
+                                        style={{ color: "#34D399" }}
+                                      />
+                                    </div>
+                                    <span
+                                      className="text-[10px] font-bold uppercase tracking-widest"
+                                      style={{ color: "#34D399" }}
+                                    >
+                                      Win
+                                    </span>
+                                  </div>
+                                  <p
+                                    className="text-sm font-semibold mb-1.5"
+                                    style={{ color: "var(--tx)" }}
+                                  >
+                                    {win.title}
+                                  </p>
+                                  <p
+                                    className="text-xs leading-relaxed mb-3"
+                                    style={{ color: "var(--tm)" }}
+                                  >
+                                    {win.description}
+                                  </p>
+                                  {win.comparedTo && (
+                                    <p
+                                      className="text-[11px] mb-3"
+                                      style={{ color: "#34D399" }}
+                                    >
+                                      vs {win.comparedTo}
+                                    </p>
+                                  )}
+                                  <button
+                                    onClick={() => setActiveTab("Dashboard")}
+                                    className="w-full py-2 rounded-xl text-xs font-semibold transition-opacity hover:opacity-80"
+                                    style={{
+                                      background: "rgba(52,211,153,0.1)",
+                                      color: "#34D399",
+                                      border: "1px solid rgba(52,211,153,0.2)",
+                                    }}
+                                  >
+                                    Keep it up →
+                                  </button>
+                                </GlassCard>
+                              ) : (
+                                cachedInsights?.personality && (
+                                  <GlassCard
+                                    className="p-5"
+                                    style={{
+                                      borderColor: "rgba(129,140,248,0.25)",
+                                      boxShadow:
+                                        "0 0 32px -16px rgba(129,140,248,0.2)",
+                                    }}
+                                  >
+                                    <div className="flex items-center gap-2 mb-3">
+                                      <div
+                                        className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                                        style={{
+                                          background: "rgba(129,140,248,0.15)",
+                                        }}
+                                      >
+                                        <Sparkles
+                                          className="h-3.5 w-3.5"
+                                          style={{ color: "#818CF8" }}
+                                        />
+                                      </div>
+                                      <span
+                                        className="text-[10px] font-bold uppercase tracking-widest"
+                                        style={{ color: "#818CF8" }}
+                                      >
+                                        Your Style
+                                      </span>
+                                    </div>
+                                    <p
+                                      className="text-sm font-semibold mb-1.5"
+                                      style={{ color: "var(--tx)" }}
+                                    >
+                                      {cachedInsights.personality.archetype}
+                                    </p>
+                                    <p
+                                      className="text-xs leading-relaxed"
+                                      style={{ color: "var(--tm)" }}
+                                    >
+                                      {cachedInsights.personality.summary}
+                                    </p>
+                                  </GlassCard>
+                                )
+                              )}
+                            </motion.div>
+                          )}
+
+                          {/* ─ Weekly Pattern bar chart (from active window) ─ */}
+                          {weeklyData.some((d) => d.amount > 0) && (
+                            <motion.div {...stagger(4)}>
+                              <GlassCard className="p-5">
+                                <div className="flex items-center justify-between mb-1">
+                                  <SectionTitle icon={Zap}>
+                                    Weekly Pattern
+                                  </SectionTitle>
+                                  {peakDay?.amount > 0 && (
+                                    <span
+                                      className="text-[11px] font-semibold px-2.5 py-1 rounded-full mb-4"
+                                      style={{
+                                        background: "rgba(251,191,36,0.12)",
+                                        color: "#FBBF24",
+                                        border:
+                                          "1px solid rgba(251,191,36,0.2)",
+                                      }}
+                                    >
+                                      {peakDay.day} is peak
+                                    </span>
+                                  )}
+                                </div>
+                                <ResponsiveContainer width="100%" height={150}>
+                                  <BarChart
+                                    data={weeklyData}
+                                    barCategoryGap="32%"
+                                  >
+                                    <XAxis
+                                      dataKey="day"
+                                      axisLine={false}
+                                      tickLine={false}
+                                      tick={{ fontSize: 11, fill: "var(--tf)" }}
+                                    />
+                                    <YAxis hide />
+                                    <Tooltip
+                                      cursor={{ fill: "var(--c4)" }}
+                                      contentStyle={{
+                                        background: "var(--sheet-bg)",
+                                        border: "1px solid var(--bd)",
+                                        borderRadius: 10,
+                                        fontSize: 12,
+                                        color: "var(--tx)",
+                                        padding: "6px 10px",
+                                      }}
+                                      formatter={(v) => [
+                                        fmt(
+                                          v,
+                                          selectedCurrency.code,
+                                          selectedCurrency.locale,
+                                        ),
+                                        "Spent",
+                                      ]}
+                                      labelStyle={{
+                                        color: "var(--tm)",
+                                        marginBottom: 2,
+                                      }}
+                                    />
+                                    <Bar dataKey="amount" radius={[5, 5, 0, 0]}>
+                                      {weeklyData.map((entry) => (
+                                        <Cell
+                                          key={entry.day}
+                                          fill={
+                                            entry.day === peakDay?.day
+                                              ? "#818CF8"
+                                              : "var(--c15)"
+                                          }
+                                        />
+                                      ))}
+                                    </Bar>
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </GlassCard>
+                            </motion.div>
+                          )}
+
+                          {/* ─ Category Breakdown (from active window) ─ */}
+                          {catEntries.length > 0 && (
+                            <motion.div {...stagger(5)}>
+                              <GlassCard className="p-5">
+                                <SectionTitle icon={TrendingUp}>
+                                  Category Breakdown
+                                </SectionTitle>
+                                <div className="space-y-3.5">
+                                  {catEntries.map(({ cat, spent, budget }) => {
+                                    const color = colorFor(cat);
+                                    const isOver = budget > 0 && spent > budget;
+                                    const barPct = (spent / maxCatSpend) * 100;
+                                    return (
+                                      <div
+                                        key={cat}
+                                        className="flex items-center gap-3"
+                                      >
+                                        <div
+                                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-bold"
+                                          style={{
+                                            background: `${color}1a`,
+                                            color,
+                                          }}
+                                        >
+                                          {cat[0].toUpperCase()}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center justify-between mb-1.5">
+                                            <span
+                                              className="text-xs font-medium truncate"
+                                              style={{ color: "var(--tx)" }}
+                                            >
+                                              {cat}
+                                            </span>
+                                            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                              <span
+                                                className="text-xs font-semibold tabular-nums"
+                                                style={{
+                                                  color: isOver
+                                                    ? "#FB7185"
+                                                    : "#34D399",
+                                                }}
+                                              >
+                                                {fmt(
+                                                  spent,
+                                                  selectedCurrency.code,
+                                                  selectedCurrency.locale,
+                                                )}
+                                              </span>
+                                              {budget > 0 && (
+                                                <span
+                                                  className="text-[10px]"
+                                                  style={{ color: "var(--tf)" }}
+                                                >
+                                                  /{" "}
+                                                  {fmt(
+                                                    budget,
+                                                    selectedCurrency.code,
+                                                    selectedCurrency.locale,
+                                                  )}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div
+                                            className="h-1.5 rounded-full overflow-hidden"
+                                            style={{ background: "var(--c8)" }}
+                                          >
+                                            <motion.div
+                                              className="h-full rounded-full"
+                                              initial={{ width: 0 }}
+                                              animate={{ width: `${barPct}%` }}
+                                              transition={{
+                                                duration: 0.6,
+                                                ease: "easeOut",
+                                              }}
+                                              style={{
+                                                background: isOver
+                                                  ? "#FB7185"
+                                                  : color,
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </GlassCard>
+                            </motion.div>
+                          )}
+
+                          {/* ─ Personality Card (from cached AI) ─ */}
+                          {cachedInsights?.personality && (
+                            <motion.div {...stagger(6)}>
+                              <GlassCard
+                                className="p-5"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, rgba(167,139,250,0.07) 0%, rgba(129,140,248,0.03) 100%)",
+                                  borderColor: "rgba(129,140,248,0.2)",
+                                }}
+                              >
+                                <div className="flex items-center gap-3 mb-3">
+                                  <div
+                                    className="w-9 h-9 rounded-2xl flex items-center justify-center shrink-0"
+                                    style={{
+                                      background:
+                                        "linear-gradient(135deg, rgba(167,139,250,0.3), rgba(129,140,248,0.2))",
+                                      border: "1px solid rgba(129,140,248,0.3)",
+                                    }}
+                                  >
+                                    <Sparkles
+                                      className="h-4 w-4"
+                                      style={{ color: "#A78BFA" }}
+                                    />
+                                  </div>
+                                  <div>
+                                    <p
+                                      className="text-[10px] font-bold uppercase tracking-widest"
+                                      style={{ color: "#A78BFA" }}
+                                    >
+                                      Spender Personality
+                                    </p>
+                                    <p
+                                      className="text-sm font-bold mt-0.5"
+                                      style={{ color: "var(--tx)" }}
+                                    >
+                                      {cachedInsights.personality.archetype}
+                                    </p>
+                                  </div>
+                                </div>
+                                <p
+                                  className="text-xs leading-relaxed mb-3"
+                                  style={{ color: "var(--tm)" }}
+                                >
+                                  {cachedInsights.personality.summary}
+                                </p>
+                                {cachedInsights.personality.traits?.length >
+                                  0 && (
+                                  <div className="flex flex-wrap gap-2">
+                                    {cachedInsights.personality.traits.map(
+                                      (t, i) => (
+                                        <span
+                                          key={i}
+                                          className="text-[11px] px-2.5 py-1 rounded-full"
+                                          style={{
+                                            background: "rgba(129,140,248,0.1)",
+                                            color: "#818CF8",
+                                            border:
+                                              "1px solid rgba(129,140,248,0.2)",
+                                          }}
+                                        >
+                                          {t.label}: <strong>{t.value}</strong>
+                                        </span>
+                                      ),
+                                    )}
+                                  </div>
+                                )}
+                              </GlassCard>
+                            </motion.div>
+                          )}
+
+                          {/* ─ All anomalies 3+ (from cached AI) ─ */}
+                          {cachedInsights?.anomalies?.length > 2 && (
+                            <motion.div {...stagger(7)}>
+                              <GlassCard className="p-5">
+                                <SectionTitle icon={AlertCircle}>
+                                  All Observations
+                                </SectionTitle>
+                                <div className="space-y-0">
+                                  {cachedInsights.anomalies.map((a, i) => {
+                                    const sevColor =
+                                      a.severity === "high"
+                                        ? "#FB7185"
+                                        : a.severity === "medium"
+                                          ? "#FBBF24"
+                                          : "#34D399";
+                                    return (
+                                      <div
+                                        key={a.id || i}
+                                        className="flex items-start gap-3 py-3 border-b last:border-0"
+                                        style={{
+                                          borderColor: "var(--bd-soft)",
+                                        }}
+                                      >
+                                        <span
+                                          className="w-2 h-2 rounded-full mt-1.5 shrink-0"
+                                          style={{ background: sevColor }}
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                          <p
+                                            className="text-sm font-medium"
+                                            style={{ color: "var(--tx)" }}
+                                          >
+                                            {a.title}
+                                          </p>
+                                          <p
+                                            className="text-xs mt-0.5"
+                                            style={{ color: "var(--tm)" }}
+                                          >
+                                            {a.description}
+                                          </p>
+                                        </div>
+                                        <span
+                                          className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 capitalize"
+                                          style={{
+                                            background: `${sevColor}15`,
+                                            color: sevColor,
+                                            border: `1px solid ${sevColor}30`,
+                                          }}
+                                        >
+                                          {a.severity}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </GlassCard>
+                            </motion.div>
+                          )}
+
+                          {/* Footer */}
+                          <motion.div {...stagger(8)}>
+                            <p
+                              className="text-center text-[11px] pb-2"
+                              style={{ color: "var(--tf)" }}
+                            >
+                              Powered by Claude AI · {expenses.length}{" "}
+                              transactions in {periodLabel}
+                            </p>
+                          </motion.div>
+                        </>
+                      )}
+                  </div>
+                );
+              })()}
+
+            {/* ── SETTINGS ── */}
+            {activeTab === "Settings" &&
+              (() => {
+                const settingsSections = [
+                  { id: "profile", label: "Profile", icon: User },
+                  { id: "income", label: "Income Sources", icon: Wallet2 },
+                  { id: "categories", label: "Categories", icon: Target },
+                  {
+                    id: "preferences",
+                    label: "Preferences",
+                    icon: SlidersHorizontal,
+                  },
+                  { id: "notifications", label: "Notifications", icon: Bell },
+                  { id: "danger", label: "Danger Zone", icon: AlertTriangle },
+                ];
+                return (
+                  <div className="flex flex-col md:flex-row gap-0 md:gap-6 w-full max-w-4xl">
+                    {/* Mobile: horizontal scroll tab bar */}
+                    <div
+                      className="flex md:hidden overflow-x-auto pb-2 mb-4 gap-1"
+                      style={{ scrollbarWidth: "none" }}
+                    >
+                      {settingsSections.map(({ id, label, icon: Icon }) => {
+                        const isActive = activeSettingsSection === id;
+                        const isDanger = id === "danger";
+                        return (
+                          <button
+                            key={id}
+                            onClick={() => setActiveSettingsSection(id)}
+                            className="flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 rounded-xl text-xs font-medium transition-all shrink-0"
+                            style={{
+                              background: isActive
+                                ? isDanger
+                                  ? "rgba(239,68,68,0.15)"
+                                  : "rgba(99,102,241,0.2)"
+                                : "transparent",
+                              color: isActive
+                                ? isDanger
+                                  ? "#F87171"
+                                  : "#818CF8"
+                                : isDanger
+                                  ? "rgba(239,68,68,0.55)"
+                                  : "var(--tm)",
+                            }}
+                          >
+                            <Icon className="h-3.5 w-3.5" />
+                            {label}
+                          </button>
                         );
                       })}
                     </div>
-                  </GlassCard>
-                </motion.div>
-              )}
-            </div>
+
+                    {/* Desktop: vertical sidebar */}
+                    <div className="hidden md:flex flex-col gap-1 w-56 shrink-0">
+                      {settingsSections.map(({ id, label, icon: Icon }) => {
+                        const isActive = activeSettingsSection === id;
+                        const isDanger = id === "danger";
+                        return (
+                          <button
+                            key={id}
+                            onClick={() => setActiveSettingsSection(id)}
+                            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left w-full"
+                            style={{
+                              background: isActive
+                                ? isDanger
+                                  ? "rgba(239,68,68,0.15)"
+                                  : "rgba(99,102,241,0.2)"
+                                : "transparent",
+                              color: isActive
+                                ? isDanger
+                                  ? "#F87171"
+                                  : "#818CF8"
+                                : isDanger
+                                  ? "rgba(239,68,68,0.55)"
+                                  : "var(--tm)",
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isActive)
+                                e.currentTarget.style.background = isDanger
+                                  ? "rgba(239,68,68,0.08)"
+                                  : "rgba(255,255,255,0.05)";
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isActive)
+                                e.currentTarget.style.background =
+                                  "transparent";
+                            }}
+                          >
+                            <Icon className="h-4 w-4 shrink-0" />
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Content pane */}
+                    <div className="flex-1 min-w-0">
+                      <AnimatePresence mode="wait">
+                        <motion.div
+                          key={activeSettingsSection}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -8 }}
+                          transition={{ duration: 0.18 }}
+                        >
+                          {/* ── PROFILE ── */}
+                          {activeSettingsSection === "profile" && (
+                            <GlassCard className="p-6">
+                              <h2
+                                className="text-xl font-semibold mb-1"
+                                style={{ color: "var(--tx)" }}
+                              >
+                                Profile
+                              </h2>
+                              <p
+                                className="text-sm mb-6"
+                                style={{ color: "var(--tf)" }}
+                              >
+                                Your account information.
+                              </p>
+                              <div
+                                className="flex items-center gap-4 mb-6 p-4 rounded-2xl"
+                                style={{
+                                  background: "var(--c4)",
+                                  border: "1px solid var(--bd)",
+                                }}
+                              >
+                                <div
+                                  className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 flex items-center justify-center text-xl font-bold"
+                                  style={{
+                                    background:
+                                      "linear-gradient(135deg,#6366F1,#06B6D4)",
+                                    color: "#fff",
+                                  }}
+                                >
+                                  {user?.photoURL ? (
+                                    <img
+                                      src={user.photoURL}
+                                      alt=""
+                                      className="w-14 h-14 object-cover"
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  ) : (
+                                    (user?.displayName ||
+                                      user?.email ||
+                                      "A")[0].toUpperCase()
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p
+                                    className="font-semibold truncate"
+                                    style={{ color: "var(--tx)" }}
+                                  >
+                                    {user?.displayName || "No display name"}
+                                  </p>
+                                  <p
+                                    className="text-sm truncate mt-0.5"
+                                    style={{ color: "var(--tf)" }}
+                                  >
+                                    {user?.email}
+                                  </p>
+                                  <span
+                                    className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium"
+                                    style={{
+                                      background: "rgba(99,102,241,0.15)",
+                                      color: "#818CF8",
+                                    }}
+                                  >
+                                    <CheckCircle2 className="h-3 w-3" />{" "}
+                                    Verified
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                {[
+                                  {
+                                    label: "DISPLAY NAME",
+                                    value: user?.displayName || "—",
+                                  },
+                                  { label: "EMAIL", value: user?.email || "—" },
+                                  {
+                                    label: "SIGN-IN METHOD",
+                                    value:
+                                      user?.providerData?.[0]?.providerId ===
+                                      "google.com"
+                                        ? "Google"
+                                        : "Email / Password",
+                                  },
+                                ].map(({ label, value }) => (
+                                  <div
+                                    key={label}
+                                    className="rounded-xl px-4 py-3"
+                                    style={{
+                                      background: "var(--c4)",
+                                      border: "1px solid var(--bd)",
+                                    }}
+                                  >
+                                    <p
+                                      className="text-[11px] font-medium tracking-wide mb-0.5"
+                                      style={{ color: "var(--tf)" }}
+                                    >
+                                      {label}
+                                    </p>
+                                    <p
+                                      className="text-sm truncate"
+                                      style={{ color: "var(--tx)" }}
+                                    >
+                                      {value}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </GlassCard>
+                          )}
+
+                          {/* ── INCOME SOURCES ── */}
+                          {activeSettingsSection === "income" && (
+                            <GlassCard className="p-6">
+                              <h2
+                                className="text-xl font-semibold mb-1"
+                                style={{ color: "var(--tx)" }}
+                              >
+                                Income Sources
+                              </h2>
+                              <p
+                                className="text-sm mb-6"
+                                style={{ color: "var(--tf)" }}
+                              >
+                                Manage where your money comes from each period.
+                              </p>
+                              <div className="space-y-2 mb-4">
+                                <div className="flex gap-2">
+                                  <ThemedInput
+                                    placeholder="Source name (e.g. Salary)"
+                                    value={source.name}
+                                    onChange={(e) => {
+                                      setSource((p) => ({
+                                        ...p,
+                                        name: e.target.value,
+                                      }));
+                                      if (sourceErrors.name)
+                                        setSourceErrors((p) => ({
+                                          ...p,
+                                          name: "",
+                                        }));
+                                    }}
+                                    error={!!sourceErrors.name}
+                                  />
+                                </div>
+                                {sourceErrors.name && (
+                                  <p className="text-xs text-red-400">
+                                    {sourceErrors.name}
+                                  </p>
+                                )}
+                                <div className="flex gap-2">
+                                  <ThemedInput
+                                    placeholder={`Amount (${selectedCurrency.code})`}
+                                    inputMode="numeric"
+                                    value={source.amount}
+                                    onChange={(e) => {
+                                      setSource((p) => ({
+                                        ...p,
+                                        amount: e.target.value.replace(
+                                          /[^0-9.]/g,
+                                          "",
+                                        ),
+                                      }));
+                                      if (sourceErrors.amount)
+                                        setSourceErrors((p) => ({
+                                          ...p,
+                                          amount: "",
+                                        }));
+                                    }}
+                                    error={!!sourceErrors.amount}
+                                  />
+                                  <GradBtn
+                                    onClick={addIncomeSource}
+                                    variant="secondary"
+                                  >
+                                    Add
+                                  </GradBtn>
+                                </div>
+                                {sourceErrors.amount && (
+                                  <p className="text-xs text-red-400">
+                                    {sourceErrors.amount}
+                                  </p>
+                                )}
+                              </div>
+                              {incomeSources.length === 0 ? (
+                                <p
+                                  className="text-xs text-center py-6"
+                                  style={{ color: "var(--tf)" }}
+                                >
+                                  No income sources yet. Add one above.
+                                </p>
+                              ) : (
+                                <ul className="space-y-2">
+                                  {incomeSources.map((src) => (
+                                    <li
+                                      key={src.id}
+                                      className="flex items-center justify-between px-3 py-2.5 rounded-xl text-sm"
+                                      style={{
+                                        background: "var(--c4)",
+                                        border: "1px solid var(--c6)",
+                                      }}
+                                    >
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <div
+                                          className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                                          style={{
+                                            background: "rgba(52,211,153,0.15)",
+                                          }}
+                                        >
+                                          <Wallet2
+                                            className="h-3 w-3"
+                                            style={{ color: "#34D399" }}
+                                          />
+                                        </div>
+                                        <span
+                                          className="font-medium truncate"
+                                          style={{ color: "var(--tx)" }}
+                                        >
+                                          {src.name}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-3 shrink-0">
+                                        <span
+                                          className="font-semibold tabular-nums"
+                                          style={{ color: "#34D399" }}
+                                        >
+                                          {fmt(
+                                            src.amount,
+                                            selectedCurrency.code,
+                                            selectedCurrency.locale,
+                                          )}
+                                        </span>
+                                        <button
+                                          onClick={() =>
+                                            removeIncomeSource(src.id)
+                                          }
+                                          className="transition-colors hover:text-[#FB7185]"
+                                          style={{ color: "var(--tf)" }}
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </GlassCard>
+                          )}
+
+                          {/* ── CATEGORIES ── */}
+                          {activeSettingsSection === "categories" && (
+                            <GlassCard className="p-6">
+                              <h2
+                                className="text-xl font-semibold mb-1"
+                                style={{ color: "var(--tx)" }}
+                              >
+                                Categories
+                              </h2>
+                              <p
+                                className="text-sm mb-6"
+                                style={{ color: "var(--tf)" }}
+                              >
+                                Customise how you tag your spending.
+                              </p>
+                              <div className="flex gap-2 mb-3">
+                                <ThemedInput
+                                  placeholder="New category name"
+                                  value={newCat}
+                                  maxLength={MAX_CATEGORY_NAME_LEN}
+                                  onChange={(e) => {
+                                    setNewCat(e.target.value);
+                                    if (catError) setCatError("");
+                                  }}
+                                />
+                                <GradBtn onClick={addCategory}>Add</GradBtn>
+                              </div>
+                              {catError ? (
+                                <p className="mb-3 text-xs text-red-400">
+                                  {catError}
+                                </p>
+                              ) : (
+                                <p
+                                  className="mb-4 text-xs"
+                                  style={{ color: "var(--tf)" }}
+                                >
+                                  Up to {MAX_CATEGORIES} categories. "Other"
+                                  cannot be deleted.
+                                </p>
+                              )}
+                              <div className="flex flex-wrap gap-2">
+                                {categories.map((c) => (
+                                  <motion.span
+                                    key={c}
+                                    layout
+                                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border"
+                                    style={{
+                                      background: `${colorFor(c)}22`,
+                                      borderColor: `${colorFor(c)}40`,
+                                      color: colorFor(c),
+                                    }}
+                                  >
+                                    {c}
+                                    {c !== "Other" && (
+                                      <button
+                                        onClick={() => deleteCategory(c)}
+                                        className="hover:opacity-60 transition-opacity ml-0.5"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    )}
+                                  </motion.span>
+                                ))}
+                              </div>
+                            </GlassCard>
+                          )}
+
+                          {/* ── PREFERENCES ── */}
+                          {activeSettingsSection === "preferences" && (
+                            <GlassCard className="p-6">
+                              <h2
+                                className="text-xl font-semibold mb-1"
+                                style={{ color: "var(--tx)" }}
+                              >
+                                Preferences
+                              </h2>
+                              <p
+                                className="text-sm mb-6"
+                                style={{ color: "var(--tf)" }}
+                              >
+                                Personalise how Ancy looks and behaves.
+                              </p>
+                              <div
+                                className="divide-y"
+                                style={{ borderColor: "var(--bd)" }}
+                              >
+                                <div className="flex items-center justify-between py-4">
+                                  <div>
+                                    <p
+                                      className="text-sm font-medium"
+                                      style={{ color: "var(--tx)" }}
+                                    >
+                                      Currency
+                                    </p>
+                                    <p
+                                      className="text-xs mt-0.5"
+                                      style={{ color: "var(--tf)" }}
+                                    >
+                                      Used for all amounts and formatting
+                                    </p>
+                                  </div>
+                                  <CurrencySelector />
+                                </div>
+                                <div className="flex items-center justify-between py-4">
+                                  <div>
+                                    <p
+                                      className="text-sm font-medium"
+                                      style={{ color: "var(--tx)" }}
+                                    >
+                                      Appearance
+                                    </p>
+                                    <p
+                                      className="text-xs mt-0.5"
+                                      style={{ color: "var(--tf)" }}
+                                    >
+                                      {dark
+                                        ? "Dark mode active"
+                                        : "Light mode active"}
+                                    </p>
+                                  </div>
+                                  <button
+                                    onClick={toggleTheme}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all"
+                                    style={{
+                                      background: "var(--c4)",
+                                      border: "1px solid var(--bd)",
+                                      color: "var(--tm)",
+                                    }}
+                                  >
+                                    {dark ? (
+                                      <Sun className="h-4 w-4 text-yellow-400" />
+                                    ) : (
+                                      <Moon className="h-4 w-4" />
+                                    )}
+                                    {dark ? "Light mode" : "Dark mode"}
+                                  </button>
+                                </div>
+                                <div className="flex items-center justify-between py-4">
+                                  <div>
+                                    <p
+                                      className="text-sm font-medium"
+                                      style={{ color: "var(--tx)" }}
+                                    >
+                                      Default View
+                                    </p>
+                                    <p
+                                      className="text-xs mt-0.5"
+                                      style={{ color: "var(--tf)" }}
+                                    >
+                                      Tab shown when you open the app
+                                    </p>
+                                  </div>
+                                  <select
+                                    value={defaultView}
+                                    onChange={(e) => {
+                                      setDefaultView(e.target.value);
+                                      localStorage.setItem(
+                                        "ancy-default-view",
+                                        e.target.value,
+                                      );
+                                      addToast("Default view saved", "success");
+                                    }}
+                                    className="px-3 py-2 rounded-xl text-sm border outline-none"
+                                    style={{
+                                      background: "var(--c4)",
+                                      border: "1px solid var(--bd)",
+                                      color: "var(--tx)",
+                                      colorScheme: dark ? "dark" : "light",
+                                    }}
+                                  >
+                                    {[
+                                      "Dashboard",
+                                      "Expenses",
+                                      "Savings",
+                                      "AI Insights",
+                                    ].map((v) => (
+                                      <option key={v} value={v}>
+                                        {v}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                            </GlassCard>
+                          )}
+
+                          {/* ── NOTIFICATIONS ── */}
+                          {activeSettingsSection === "notifications" && (
+                            <GlassCard className="p-6">
+                              <h2
+                                className="text-xl font-semibold mb-1"
+                                style={{ color: "var(--tx)" }}
+                              >
+                                Notifications
+                              </h2>
+                              <p
+                                className="text-sm mb-6"
+                                style={{ color: "var(--tf)" }}
+                              >
+                                Stay informed about your spending.
+                              </p>
+                              <div className="flex flex-col items-center justify-center py-14 text-center">
+                                <div
+                                  className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+                                  style={{ background: "rgba(99,102,241,0.1)" }}
+                                >
+                                  <Bell
+                                    className="h-6 w-6"
+                                    style={{ color: "var(--tf)" }}
+                                  />
+                                </div>
+                                <p
+                                  className="font-semibold mb-2"
+                                  style={{ color: "var(--tx)" }}
+                                >
+                                  Coming Soon
+                                </p>
+                                <p
+                                  className="text-sm max-w-xs"
+                                  style={{ color: "var(--tf)" }}
+                                >
+                                  Get monthly summaries and budget alerts
+                                  delivered to your device.
+                                </p>
+                              </div>
+                            </GlassCard>
+                          )}
+
+                          {/* ── DANGER ZONE ── */}
+                          {activeSettingsSection === "danger" && (
+                            <GlassCard className="p-6">
+                              <h2 className="text-xl font-semibold mb-1 text-red-400">
+                                Danger Zone
+                              </h2>
+                              <p
+                                className="text-sm mb-6"
+                                style={{ color: "var(--tf)" }}
+                              >
+                                Irreversible actions — proceed with caution.
+                              </p>
+                              <div
+                                className="rounded-2xl p-5 border-2 border-red-500/40"
+                                style={{ background: "rgba(239,68,68,0.04)" }}
+                              >
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-red-400 text-sm mb-1">
+                                      Reset All Data
+                                    </p>
+                                    <p
+                                      className="text-xs"
+                                      style={{ color: "var(--tf)" }}
+                                    >
+                                      Permanently delete all expenses, income
+                                      sources, budgets, savings goals, and
+                                      categories. This cannot be undone.
+                                    </p>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      setResetConfirmText("");
+                                      setResetDialogOpen(true);
+                                    }}
+                                    className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                    Reset
+                                  </button>
+                                </div>
+                              </div>
+                            </GlassCard>
+                          )}
+                        </motion.div>
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                );
+              })()}
           </div>
         </div>
       </div>
+
+      {/* Reset All Data confirmation dialog */}
+      {resetDialogOpen &&
+        (() => {
+          const expenseCount = expenses.length;
+          const incomeCount = incomeSources.length;
+          const goalCount = (state.savingsGoals || []).length;
+          const periodCount = Object.keys(localStorage).filter((k) =>
+            k.startsWith(`expense-tracker:${user?.uid}:`),
+          ).length;
+          const canConfirm = resetConfirmText === "DELETE";
+          return (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              style={{
+                background: "rgba(0,0,0,0.6)",
+                backdropFilter: "blur(4px)",
+              }}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="w-full max-w-md rounded-2xl p-6 shadow-2xl border border-red-500/30"
+                style={{ background: "var(--c2)" }}
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/15">
+                    <AlertTriangle className="h-5 w-5 text-red-400" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-base text-red-400">
+                      Reset All Data
+                    </h2>
+                    <p className="text-xs" style={{ color: "var(--tf)" }}>
+                      This action is permanent and irreversible.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  className="rounded-xl p-3 mb-4 text-xs space-y-1 border border-red-500/20"
+                  style={{ background: "rgba(239,68,68,0.06)" }}
+                >
+                  <p style={{ color: "var(--tm)" }}>
+                    The following will be permanently deleted:
+                  </p>
+                  <ul
+                    className="mt-1.5 space-y-0.5 pl-2"
+                    style={{ color: "var(--tf)" }}
+                  >
+                    <li>
+                      • {expenseCount} expense{expenseCount !== 1 ? "s" : ""}
+                    </li>
+                    <li>
+                      • {incomeCount} income source
+                      {incomeCount !== 1 ? "s" : ""}
+                    </li>
+                    <li>
+                      • {goalCount} savings goal{goalCount !== 1 ? "s" : ""}
+                    </li>
+                    <li>
+                      • {periodCount} period{periodCount !== 1 ? "s" : ""} of
+                      data from cloud + local storage
+                    </li>
+                  </ul>
+                </div>
+
+                <p className="text-xs mb-2" style={{ color: "var(--tm)" }}>
+                  Type{" "}
+                  <span className="font-mono font-bold text-red-400">
+                    DELETE
+                  </span>{" "}
+                  to confirm:
+                </p>
+                <input
+                  type="text"
+                  value={resetConfirmText}
+                  onChange={(e) => setResetConfirmText(e.target.value)}
+                  placeholder="Type DELETE here"
+                  className="w-full rounded-xl px-3 py-2.5 text-sm border outline-none mb-4 font-mono"
+                  style={{
+                    background: "var(--c4)",
+                    border:
+                      resetConfirmText && !canConfirm
+                        ? "1px solid rgba(239,68,68,0.6)"
+                        : "1px solid var(--bd)",
+                    color: "var(--tx)",
+                  }}
+                  autoFocus
+                />
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setResetDialogOpen(false);
+                      setResetConfirmText("");
+                    }}
+                    disabled={resetLoading}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors hover:opacity-80"
+                    style={{
+                      border: "1px solid var(--bd)",
+                      color: "var(--tm)",
+                      background: "var(--c4)",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={resetAllData}
+                    disabled={!canConfirm || resetLoading}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                    style={{
+                      background:
+                        canConfirm && !resetLoading
+                          ? "linear-gradient(135deg,#EF4444,#DC2626)"
+                          : "rgba(239,68,68,0.2)",
+                      color:
+                        canConfirm && !resetLoading
+                          ? "#fff"
+                          : "rgba(239,68,68,0.5)",
+                      cursor:
+                        canConfirm && !resetLoading ? "pointer" : "not-allowed",
+                    }}
+                  >
+                    {resetLoading ? "Deleting…" : "Delete Everything"}
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
     </ThemeContext.Provider>
   );
 }
@@ -4031,12 +7578,6 @@ function SavingsGoalCard({
   onDelete,
   selectedCurrency,
 }) {
-  const { dark } = useTheme();
-  const t = {
-    text: dark ? "text-gray-100" : "text-gray-800",
-    textFaint: dark ? "text-gray-500" : "text-gray-400",
-    itemBg: dark ? "bg-white/5 border-white/5" : "bg-white/50 border-gray-100",
-  };
   const progress = (goal.currentAmount / goal.targetAmount) * 100;
   const daysRemaining = goal.targetDate
     ? Math.ceil(
@@ -4065,24 +7606,29 @@ function SavingsGoalCard({
       : daysRemaining === 0
         ? "Due today!"
         : `${daysRemaining}d left`;
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
-      className={`p-4 rounded-2xl border ${t.itemBg} hover:shadow-md transition-shadow`}
+      className="p-4 rounded-2xl hover:shadow-md transition-shadow"
+      style={{ background: "var(--c4)", border: "1px solid var(--c6)" }}
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
-          <h3 className={`text-sm font-semibold truncate mb-1.5 ${t.text}`}>
+          <h3
+            className="text-sm font-semibold truncate mb-1.5"
+            style={{ color: "var(--tx)" }}
+          >
             {goal.name}
           </h3>
           <div className="flex items-center gap-1.5 flex-wrap">
             <span
               className={`px-2 py-0.5 text-[10px] font-medium rounded-full border ${priorityStyle}`}
             >
-              {goal.priority ? goal.priority.charAt(0).toUpperCase() + goal.priority.slice(1) : "Medium"}
+              {goal.priority
+                ? goal.priority.charAt(0).toUpperCase() + goal.priority.slice(1)
+                : "Medium"}
             </span>
             {daysRemaining !== null && (
               <span
@@ -4095,13 +7641,17 @@ function SavingsGoalCard({
         </div>
         <button
           onClick={onDelete}
-          className={`transition-colors ml-2 shrink-0 ${dark ? "text-gray-600 hover:text-red-400" : "text-gray-300 hover:text-red-400"}`}
+          className="transition-colors ml-2 shrink-0 hover:text-[#FB7185]"
+          style={{ color: "var(--tf)" }}
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
       <div className="mb-3">
-        <div className={`flex justify-between text-xs mb-1 ${t.textFaint}`}>
+        <div
+          className="flex justify-between text-xs mb-1"
+          style={{ color: "var(--tm)" }}
+        >
           <span>
             {fmt(
               goal.currentAmount,
@@ -4118,16 +7668,22 @@ function SavingsGoalCard({
           </span>
         </div>
         <div
-          className={`h-2 w-full rounded-full overflow-hidden ${dark ? "bg-white/10" : "bg-gray-100"}`}
+          className="h-2 w-full rounded-full overflow-hidden"
+          style={{ background: "var(--bd)" }}
         >
           <motion.div
             initial={{ width: 0 }}
             animate={{ width: `${Math.min(progress, 100)}%` }}
             transition={{ duration: 0.6 }}
-            className={`h-2 rounded-full ${isCompleted ? "bg-green-400" : "bg-gradient-to-r from-indigo-400 to-cyan-400"}`}
+            className="h-2 rounded-full"
+            style={{
+              background: isCompleted
+                ? "#34D399"
+                : "linear-gradient(90deg, #818CF8, #22D3EE)",
+            }}
           />
         </div>
-        <p className={`text-[10px] mt-1 ${t.textFaint}`}>
+        <p className="text-[10px] mt-1" style={{ color: "var(--tm)" }}>
           {progress.toFixed(1)}% complete
         </p>
       </div>
@@ -4135,13 +7691,18 @@ function SavingsGoalCard({
         <button
           onClick={onAddMoney}
           disabled={isCompleted}
-          className={`flex-1 py-1.5 rounded-xl border text-xs transition-colors disabled:opacity-40 ${dark ? "border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10" : "border-indigo-200 text-indigo-500 hover:bg-indigo-50"}`}
+          className="flex-1 py-1.5 rounded-xl text-xs transition-colors disabled:opacity-40 hover:bg-indigo-500/10"
+          style={{
+            border: "1px solid rgba(129,140,248,0.30)",
+            color: "#818CF8",
+          }}
         >
           + Add
         </button>
         <button
           onClick={onWithdraw}
-          className={`flex-1 py-1.5 rounded-xl border text-xs transition-colors ${dark ? "border-white/10 text-gray-400 hover:bg-white/5" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}
+          className="flex-1 py-1.5 rounded-xl text-xs transition-colors hover:bg-white/5"
+          style={{ border: "1px solid var(--c10)", color: "var(--tm)" }}
         >
           − Withdraw
         </button>
@@ -4151,67 +7712,65 @@ function SavingsGoalCard({
 }
 
 function TipsDialog() {
-  const { dark } = useTheme();
   return (
     <Dialog>
       <DialogTrigger asChild>
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border text-sm shadow-sm transition-colors ${dark ? "bg-[#1e2235]/80 border-white/10 text-gray-400 hover:bg-white/5" : "bg-white/70 border-gray-200/60 text-gray-500 hover:bg-white"}`}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm transition-colors hover:bg-white/5"
+          style={{
+            background: "var(--c4)",
+            border: "1px solid var(--bd)",
+            color: "var(--tm)",
+          }}
         >
           <HelpCircle className="h-4 w-4" />
           How to use
         </motion.button>
       </DialogTrigger>
       <DialogContent
-        className={`rounded-2xl ${dark ? "bg-[#1e2235] border-white/10" : ""}`}
+        className="rounded-2xl"
+        style={{
+          background: "var(--modal-bg)",
+          border: "1px solid var(--modal-bdr)",
+          color: "var(--tx)",
+        }}
       >
         <DialogHeader>
-          <DialogTitle className="text-indigo-400">
+          <DialogTitle style={{ color: "#818CF8" }}>
             Quick Start Guide
           </DialogTitle>
           <DialogDescription asChild>
             <div
-              className={`space-y-3 text-sm mt-2 ${dark ? "text-gray-400" : "text-gray-600"}`}
+              className="space-y-3 text-sm mt-2"
+              style={{ color: "var(--tm)" }}
             >
               <p>
-                <strong className={dark ? "text-gray-200" : "text-gray-800"}>
-                  ⚡ Quick Add:
-                </strong>{" "}
+                <strong style={{ color: "var(--tx)" }}>⚡ Quick Add:</strong>{" "}
                 Type naturally like "500 on groceries, 200 on coffee" — Claude
                 parses up to 5 expenses at once. Select which ones to add.
               </p>
               <p>
-                <strong className={dark ? "text-gray-200" : "text-gray-800"}>
-                  ✨ AI Insights:
-                </strong>{" "}
+                <strong style={{ color: "var(--tx)" }}>✨ AI Insights:</strong>{" "}
                 Click the purple "AI Insights" button for a personalized
                 spending summary.
               </p>
               <p>
-                <strong className={dark ? "text-gray-200" : "text-gray-800"}>
-                  🌍 Currency:
-                </strong>{" "}
+                <strong style={{ color: "var(--tx)" }}>🌍 Currency:</strong>{" "}
                 Click the currency selector to switch currencies.
               </p>
               <p>
-                <strong className={dark ? "text-gray-200" : "text-gray-800"}>
-                  📅 Period:
-                </strong>{" "}
+                <strong style={{ color: "var(--tx)" }}>📅 Period:</strong>{" "}
                 Choose a month or "Custom Period" for any date range.
               </p>
               <p>
-                <strong className={dark ? "text-gray-200" : "text-gray-800"}>
-                  🌙 Dark mode:
-                </strong>{" "}
+                <strong style={{ color: "var(--tx)" }}>🌙 Dark mode:</strong>{" "}
                 Toggle the sun/moon icon in the header.
               </p>
               <p>
-                <strong className={dark ? "text-gray-200" : "text-gray-800"}>
-                  🔴 Budgets:
-                </strong>{" "}
-                Bars turn orange at 80% and red when over limit.
+                <strong style={{ color: "var(--tx)" }}>🔴 Budgets:</strong> Bars
+                turn orange at 80% and red when over limit.
               </p>
             </div>
           </DialogDescription>

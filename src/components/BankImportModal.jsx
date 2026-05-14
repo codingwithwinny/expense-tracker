@@ -22,6 +22,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { parseBankStatementFn, loadMonth, saveMonth } from "@/lib/firebase";
+import { functionsErrorMsg, firestoreErrorMsg } from "@/lib/utils";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -315,12 +316,14 @@ export default function BankImportModal({
   currentPeriodKey,
   setState,
   addToast,
+  isOnline = true,
 }) {
   const allCategories = categories?.length ? [...new Set([...categories, ...CATEGORIES])] : CATEGORIES;
 
   const [step, setStep] = useState("upload"); // upload | parsing | saving | review | done
   const [file, setFile] = useState(null);
   const [error, setError] = useState("");
+  const [parsingMsg, setParsingMsg] = useState("Analyzing your statement…");
   const [transactions, setTransactions] = useState([]);
   const [selected, setSelected] = useState({});
   const [summary, setSummary] = useState(null);
@@ -354,6 +357,7 @@ export default function BankImportModal({
     setStep("upload");
     setFile(null);
     setError("");
+    setParsingMsg("Analyzing your statement…");
     setTransactions([]);
     setSelected({});
     setSummary(null);
@@ -366,9 +370,30 @@ export default function BankImportModal({
   }
 
   async function handleFile(f) {
+    if (!isOnline) {
+      setError("You're offline. Connect to the internet to analyze bank statements.");
+      return;
+    }
+
+    // File type validation — only PDF and CSV
+    const ext = f.name.split(".").pop().toLowerCase();
+    if (!["pdf", "csv"].includes(ext)) {
+      setError("Only PDF and CSV bank statements are supported right now.");
+      return;
+    }
+
+    // File size validation — reject over 10MB
+    if (f.size > 10 * 1024 * 1024) {
+      setError("File too large. Try a statement under 10MB or a CSV instead of PDF.");
+      return;
+    }
+
     setFile(f);
     setError("");
+    setParsingMsg("Analyzing your statement…");
     setStep("parsing");
+
+    const slowTimer = setTimeout(() => setParsingMsg("Still working on it…"), 10000);
 
     try {
       let fileText;
@@ -381,19 +406,31 @@ export default function BankImportModal({
         fileText = typeof extracted === "string" ? extracted : "";
       }
 
-      const response = await parseBankStatementFn({
-        fileText,
-        categories: allCategories,
-        currency: selectedCurrency?.code || "INR",
-      });
+      const response = await Promise.race([
+        parseBankStatementFn({
+          fileText,
+          categories: allCategories,
+          currency: selectedCurrency?.code || "INR",
+        }),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(Object.assign(new Error("TIMEOUT"), { code: "TIMEOUT" })),
+            30000,
+          ),
+        ),
+      ]);
       const result = response.data;
 
-      const txs = (result.transactions || []).filter(
-        (tx) => tx.amount > 0 && tx.date
-      );
+      if (!result || !Array.isArray(result.transactions)) {
+        setError("We couldn't read this statement. Try a different file or paste expenses manually.");
+        setStep("upload");
+        return;
+      }
+
+      const txs = result.transactions.filter((tx) => tx.amount > 0 && tx.date);
 
       if (txs.length === 0) {
-        setError("No expense transactions found. Please try a different file or format.");
+        setError("We couldn't read this statement. Try a different file or paste expenses manually.");
         setStep("upload");
         return;
       }
@@ -405,7 +442,7 @@ export default function BankImportModal({
           (e) =>
             e.date === tx.date &&
             Math.abs(e.amount - tx.amount) < 0.01 &&
-            (e.description || "").toLowerCase() === (tx.description || "").toLowerCase()
+            (e.description || "").toLowerCase() === (tx.description || "").toLowerCase(),
         );
         if (isDup) dupSet.add(i);
       });
@@ -422,14 +459,17 @@ export default function BankImportModal({
       setSummary(result.summary);
       setStep("review");
     } catch (err) {
-      console.error("Parse error:", err);
-      // Firebase callable errors have err.message with the specific HttpsError message
-      const msg =
-        err?.message ||
-        err?.details ||
-        "Failed to parse statement. Please try again.";
+      console.error("[Functions] parseBankStatement failed:", err);
+      let msg;
+      if (err.code === "TIMEOUT") {
+        msg = "That took longer than expected. Try again or use a smaller file.";
+      } else {
+        msg = functionsErrorMsg(err);
+      }
       setError(msg);
       setStep("upload");
+    } finally {
+      clearTimeout(slowTimer);
     }
   }
 
@@ -539,7 +579,8 @@ export default function BankImportModal({
 
       setStep("done");
     } catch (err) {
-      setError(err?.message || "Import failed. Please try again.");
+      console.error("[Firestore] handleConfirmImport failed:", err);
+      setError(firestoreErrorMsg(err));
       setStep("review");
     }
   }
@@ -640,7 +681,7 @@ export default function BankImportModal({
                 </div>
                 <div className="text-center">
                   <p className={`text-sm font-semibold ${t.text}`}>
-                    Analyzing your statement…
+                    {parsingMsg}
                   </p>
                   <p className={`text-xs mt-1 ${t.faint}`}>
                     {file?.name} — Claude is extracting transactions
