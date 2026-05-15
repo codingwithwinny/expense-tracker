@@ -1233,7 +1233,7 @@ function MobileTabBar({ activeTab, onTabChange }) {
       initial={{ y: 100 }}
       animate={{ y: 0 }}
       transition={{ type: "spring", damping: 28, stiffness: 260 }}
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch bg-white dark:bg-[#141828] border-t border-slate-200 dark:border-white/[0.08]"
+      className="lg:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch bg-white dark:bg-[#141828] border-t border-slate-200 dark:border-white/[0.08]"
       style={{
         backdropFilter: "blur(24px)",
         WebkitBackdropFilter: "blur(24px)",
@@ -3823,7 +3823,7 @@ export default function ExpenseTracker() {
 
         {/* ── MOBILE FAB ────────────────────────────────────── */}
         <motion.button
-          className="md:hidden fixed z-50 flex items-center justify-center rounded-full shadow-2xl"
+          className="lg:hidden fixed z-50 flex items-center justify-center rounded-full shadow-2xl"
           style={{
             bottom: "calc(env(safe-area-inset-bottom, 0px) + 72px)",
             right: 16,
@@ -4020,7 +4020,7 @@ export default function ExpenseTracker() {
                       Here&apos;s where your money stands.
                     </h1>
                   </div>
-                  <div className="hidden md:flex flex-wrap items-center gap-2">
+                  <div className="hidden lg:flex flex-wrap items-center gap-2">
                     {/* Period selector */}
                     <div className="flex flex-col gap-1.5">
                       <Select
@@ -4125,7 +4125,7 @@ export default function ExpenseTracker() {
                       }}
                     >
                       <Upload className="h-3.5 w-3.5" />
-                      <span className="hidden sm:inline">Import</span>
+                      <span className="hidden xl:inline">Import</span>
                     </motion.button>
 
                     <motion.button
@@ -4140,7 +4140,7 @@ export default function ExpenseTracker() {
                       }}
                     >
                       <Download className="h-3.5 w-3.5" />
-                      <span className="hidden sm:inline">Export</span>
+                      <span className="hidden xl:inline">Export</span>
                     </motion.button>
                   </div>
                 </motion.div>
@@ -4155,7 +4155,7 @@ export default function ExpenseTracker() {
                 {/* Left */}
                 <div className="space-y-6">
                   {/* Stat cards */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
                     {[
                       {
                         label: "Income",
@@ -4237,7 +4237,7 @@ export default function ExpenseTracker() {
                             </div>
                           </div>
                           <p
-                            className="text-[22px] font-bold leading-none tracking-tight"
+                            className="text-xl xl:text-2xl font-bold leading-none tracking-tight tabular-nums whitespace-nowrap overflow-hidden text-ellipsis"
                             style={{ color: "var(--tx)" }}
                           >
                             {card.value}
@@ -4326,14 +4326,14 @@ export default function ExpenseTracker() {
                             style={{ color: "#818CF8" }}
                           />
                         </div>
-                      ) : trendData.length === 0 ? (
+                      ) : trendData.length < 2 ? (
                         <div className="flex flex-col items-center justify-center h-[200px] gap-2">
                           <TrendingUp
                             className="h-8 w-8 opacity-20"
                             style={{ color: "#818CF8" }}
                           />
                           <p className="text-xs" style={{ color: "var(--tf)" }}>
-                            No trend data yet
+                            Add expenses across at least two months to see trends
                           </p>
                         </div>
                       ) : (
@@ -4538,18 +4538,11 @@ export default function ExpenseTracker() {
 
                 {/* Right — donut + savings preview */}
                 <div className="space-y-6">
+                  {totals.byCat.length > 0 && (
                   <motion.div {...stagger(2)}>
                     <GlassCard className="p-5">
                       <SectionTitle icon={TrendingUp}>By Category</SectionTitle>
-                      {totals.byCat.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-10">
-                          <div className="text-4xl mb-2">📊</div>
-                          <p className="text-xs" style={{ color: "var(--tf)" }}>
-                            Add expenses to see breakdown.
-                          </p>
-                        </div>
-                      ) : (
-                        <>
+                      <>
                           <div className="h-48 relative">
                             <ResponsiveContainer width="100%" height="100%">
                               <PieChart>
@@ -4654,10 +4647,10 @@ export default function ExpenseTracker() {
                               );
                             })}
                           </div>
-                        </>
-                      )}
+                      </>
                     </GlassCard>
                   </motion.div>
+                  )}
 
                   {/* Savings Goals preview */}
                   {savingsGoals.length > 0 && (
@@ -4980,7 +4973,7 @@ export default function ExpenseTracker() {
                       </div>
 
                       {/* Mobile list */}
-                      <div className="mt-4 md:hidden space-y-2">
+                      <div className="mt-4 lg:hidden space-y-2">
                         {expenses.length === 0 ? (
                           selectedMonth === "custom" ? (
                             <EmptyState
@@ -5156,7 +5149,7 @@ export default function ExpenseTracker() {
                       </div>
 
                       {/* Desktop table */}
-                      <div className="mt-4 hidden md:block overflow-x-auto">
+                      <div className="mt-4 hidden lg:block overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
                             <tr
