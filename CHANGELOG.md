@@ -177,3 +177,18 @@ _Work in progress for next release._
 ### Fixed
 
 - React hook rules violation in ExpenseTracker where new `totalExpenseCount` useMemo was placed after early return — moved to top hooks block (caught by error boundary from Blocker #1)
+
+## [2.8.0] — 2026-05-14
+
+### Added — Blocker #5: Offline polish (ADR-005)
+
+- New "Works offline" section in Settings showing exactly which features are available offline, sync queued, or need connection
+- Sync indicator tooltips on offline-pending expenses ("Waiting to sync — will upload when you're back online")
+
+### Changed
+
+- Offline banner: toned down from amber-warning to neutral-informational. Reads "You're offline. Changes will sync when you reconnect." with a cloud icon. Less alarming, more trustworthy.
+
+### Note
+
+- Reload-while-offline works only on production builds, not Vite dev server (expected behavior — dev server requires live websocket connection)
