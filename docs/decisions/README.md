@@ -40,10 +40,11 @@ Don't write one for:
 
 Update this list when adding a new ADR.
 
-| #   | Title                                             | Status  | Date       |
-| --- | ------------------------------------------------- | ------- | ---------- |
-| 001 | Dark mode first                                   | Decided | 2026-04-27 |
-| 002 | Claude Sonnet for AI features                     | Decided | 2026-04-27 |
-| 003 | Date-driven expense routing                       | Decided | 2026-04-27 |
-| 004 | Disposable Money Model                            | Decided | 2026-05-04 |
-| 005 | Prioritize trust over polish before public launch | Decided | 2026-05-13 |
+| #   | Title                                                     | Status  | Date       |
+| --- | --------------------------------------------------------- | ------- | ---------- |
+| 001 | Dark mode first                                           | Decided | 2026-04-27 |
+| 002 | Claude Sonnet for AI features                             | Decided | 2026-04-27 |
+| 003 | Date-driven expense routing                               | Decided | 2026-04-27 |
+| 004 | Disposable Money Model                                    | Decided | 2026-05-04 |
+| 005 | Prioritize trust over polish before public launch         | Decided | 2026-05-13 |
+| 006 | Currency is an account property, not a runtime preference | Decided | 2026-05-20 |
